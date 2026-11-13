@@ -8,6 +8,13 @@
 - @jeonghasang
 - @qortmdcjf
 
+## 폴더 구조
+| 폴더 | 내용 |
+|---|---|
+| [`story/`](story) | 기획 · 스토리 · 시나리오 · 발표 자료 |
+| [`frontend/`](frontend) | 앱 화면(UI) |
+| [`backend/`](backend) | 서버 · API · DB |
+
 ## 시작하기
 ```bash
 git clone https://github.com/WiJihun/Hyundai_app_idea.git
