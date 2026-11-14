@@ -5,6 +5,7 @@ import { ETA_REPORT_INTERVAL_MS } from './dispatch.ts';
 import { GleoDialog } from './gleo/dialog.ts';
 import { OrderService, orderView, type Order } from './orders.ts';
 import { MockInCarPayment } from './payment.ts';
+import { pointAt } from './geo.ts';
 import { MIN, hhmm } from './time.ts';
 import { STORES, VEHICLE } from './world.ts';
 
@@ -72,6 +73,7 @@ export class DriveOnApp {
     this.lastRestricted = this.car.uxRestricted;
 
     this.orders.events.on('order.sent', (o: Order) => {
+      this.sentAtKm.set(o.id, this.car.progressKm);
       const text = this.dialog.onOrderSent(o.id);
       if (text) this.events.emit('gleo.say', { text });
       this.events.emit('pos.order', { kind: 'sent', order: orderView(o) });
@@ -90,6 +92,29 @@ export class DriveOnApp {
     });
     this.orders.events.on('order.created', (o: Order) => this.announced.set(o.id, baseline(o)));
     this.orders.events.on('order.updated', (o: Order) => this.checkShift(o));
+  }
+
+  /** 실제로 매장에 전송된 순간 차가 있던 경로 위치(km) */
+  private readonly sentAtKm = new Map<string, number>();
+
+  /**
+   * 주문 전송 지점: 진행 중 주문이 '경로 위 어디를 지날 때' 매장으로 들어가는지.
+   * 전송 전이면 전송 시각의 예측 위치, 전송 후면 실제 전송 위치.
+   */
+  sendPoint() {
+    const now = this.clock.now;
+    const o = this.orders.list().find((x) => x.status !== 'CANCELLED');
+    if (!o) return null;
+    const sent = o.status === 'SENT';
+    const km = sent ? (this.sentAtKm.get(o.id) ?? this.car.progressKm) : this.car.predictKmAt(now, o.dispatchAt);
+    return {
+      orderId: o.id,
+      sent,
+      km: Math.round(km * 1000) / 1000,
+      pos: pointAt(this.car.route, km),
+      at: sent ? (o.sentAt ?? o.dispatchAt) : o.dispatchAt,
+      display: hhmm(sent ? (o.sentAt ?? o.dispatchAt) : o.dispatchAt),
+    };
   }
 
   /** 마지막으로 운전자에게 알린 전송 시각(주문별) */
@@ -224,6 +249,7 @@ export class DriveOnApp {
         this.payment.failNext = false;
         this.fastForwarding = false;
         this.announced.clear();
+        this.sentAtKm.clear();
         this.approachAnnounced = null;
         this.sinceEtaReport = 0;
         this.lastRestricted = this.car.uxRestricted;
@@ -305,6 +331,7 @@ export class DriveOnApp {
       clock: { speed: this.clock.speed, paused: this.clock.paused },
       demo: { autoFastForward: this.autoFastForward, failNextPayment: this.payment.failNext },
       car: this.car.snapshot(now),
+      sendPoint: this.sendPoint(),
       session: this.dialog.view(),
       orders: this.orders.list().map(orderView),
       vehicle: VEHICLE,
