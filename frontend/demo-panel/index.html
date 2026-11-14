@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>데모 컨트롤 패널</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Asta+Sans:wght@400;600;800&display=swap" />
+  <link rel="stylesheet" href="/common/theme.css" />
+  <style>
+    body { padding: 12px 14px; font-size: 14px; }
+    h1 { font-size: 18px; margin: 0 0 10px; display: flex; align-items: center; gap: 10px; }
+    h1 .clock { margin-left: auto; font-size: 26px; font-variant-numeric: tabular-nums; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; }
+    .box { background: var(--panel); border-radius: var(--radius); padding: 10px 12px; }
+    .box h2 { font-size: 13px; color: var(--muted); margin: 0 0 8px; font-weight: 700; }
+    .row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .row + .row { margin-top: 6px; }
+    .row button { padding: 6px 10px; font-size: 13px; }
+    .kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-variant-numeric: tabular-nums; }
+    .kv b { font-weight: 800; }
+    .hist { font-size: 12px; color: var(--muted); max-height: 70px; overflow: auto; margin-top: 6px; }
+    label { display: inline-flex; gap: 6px; align-items: center; }
+    .script button { text-align: left; }
+  </style>
+</head>
+<body>
+  <h1>🎛 데모 컨트롤 패널 <span class="muted" style="font-size:12px;font-weight:400">실제 차 없이 주행·정차·정체를 재현</span><span class="clock" id="clock">–</span></h1>
+  <div class="grid">
+    <section class="box">
+      <h2>시간</h2>
+      <div class="row" id="speed"></div>
+      <div class="row">
+        <label><input type="checkbox" id="autoFF" /> 결제 후 자동 빨리감기(전송되면 1배속)</label>
+      </div>
+      <div class="row"><button class="danger" data-c="reset">↺ 시나리오 처음으로 (18:55 출발)</button></div>
+    </section>
+    <section class="box">
+      <h2>차량 (CarUxRestrictions)</h2>
+      <div class="row" id="drive"></div>
+      <h2 style="margin-top:10px">교통</h2>
+      <div class="row">
+        <button data-c="jam" data-v="6">🚧 정체 +6분</button>
+        <button data-c="jam" data-v="3">정체 +3분</button>
+        <button data-c="fast" data-v="3">🟢 원활 −3분</button>
+        <button data-c="clearTraffic">교통 초기화</button>
+      </div>
+    </section>
+    <section class="box">
+      <h2>지금 숫자</h2>
+      <div class="kv" id="nums"></div>
+      <div class="hist" id="hist"></div>
+    </section>
+    <section class="box">
+      <h2>예외 상황</h2>
+      <div class="row"><button data-c="failNextPayment" id="failBtn">💳 다음 결제 1회 실패</button></div>
+      <h2 style="margin-top:10px">시연 대본 (Gleo에 보내기)</h2>
+      <div class="row script" id="script"></div>
+    </section>
+  </div>
+  <div class="conn" id="conn">연결 중…</div>
+  <script type="module">
+    import { api, connect, esc, hhmm, hhmmss, MODE, patch, remain } from '/common/common.js';
+    const $ = (id) => document.getElementById(id);
+    const SCRIPT = ['글레오, 치킨 시켜줘', '이번엔 청양마요로', '아니', '배달', '응', '치킨 언제 들어가?'];
+    $('script').innerHTML = SCRIPT.map((t, i) => `<button data-say="${esc(t)}">${i + 1}. ${esc(t)}</button>`).join('');
+
+    document.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-c]');
+      if (b) {
+        const v = b.dataset.v;
+        if (b.dataset.c === 'reset' && !confirm('시나리오를 처음(18:55 출발)으로 되돌릴까요? 주문 기록이 지워집니다.')) return;
+        await api('/demo/control', { action: b.dataset.c, value: v === undefined ? undefined : isNaN(+v) ? v : +v });
+      }
+      const s = e.target.closest('[data-say]');
+      if (s) await api('/gleo/utterance', { text: s.dataset.say });
+    });
+    $('autoFF').onchange = (e) => api('/demo/control', { action: 'autoFastForward', value: e.target.checked });
+
+    function render(st) {
+      $('clock').textContent = hhmmss(st.now);
+      const sp = st.clock;
+      patch($('speed'), `<button class="${sp.paused ? 'on' : ''}" data-c="${sp.paused ? 'resume' : 'pause'}">${sp.paused ? '▶ 재생' : '⏸ 일시정지'}</button>` +
+        [1, 10, 30, 60].map((x) => `<button class="${!sp.paused && sp.speed === x ? 'on' : ''}" data-c="speed" data-v="${x}">×${x}</button>`).join(''));
+      $('autoFF').checked = st.demo.autoFastForward;
+      $('failBtn').classList.toggle('on', st.demo.failNextPayment);
+
+      const c = st.car;
+      const ds = c.state === 'PICKUP' ? 'STOPPED' : c.state;
+      patch($('drive'), [['DRIVING', 'drive', '🚗 주행'], ['STOPPED', 'stop', '🚦 정차(신호 대기)'], ['PARKED', 'park', '🅿 주차']]
+        .map(([s, a, l]) => `<button class="${ds === s ? 'on' : ''}" data-c="${a}">${l}</button>`).join('') +
+        `<span class="muted">화면 제한 ${c.uxRestricted ? '켜짐' : '꺼짐'}</span>`);
+
+      const o = st.session.order ?? st.orders[0];
+      patch($('nums'), `
+        <span>집 도착 예정</span><b>${hhmm(c.etaDestination)}</b>
+        ${c.etaWaypoint ? `<span>경유 매장 도착</span><b>${hhmm(c.etaWaypoint)}</b>` : ''}
+        <span>남은 거리</span><b>${c.remainingKm} / ${c.totalKm} km · ${c.speedKmh} km/h</b>
+        <span>교통</span><b>${c.traffic === 'JAM' ? `정체 (+${c.delayMin}분 남음)` : c.traffic === 'FAST' ? `원활 (${c.delayMin}분)` : '보통'}</b>
+        ${o ? `<span>주문 ${o.id}</span><b>${MODE[o.mode]} · ${o.status === 'SCHEDULED' ? `${o.display.dispatchAt} 전송 예정 (${remain(o.dispatchAt - st.now)})` : o.status === 'SENT' ? `${o.display.sentAt} 전송됨` : '취소됨'}</b>` : '<span>주문</span><b class="muted">없음</b>'}`);
+      patch($('hist'), o && o.etaHistory.length > 1
+        ? '전송 시각 변화: ' + o.etaHistory.map((h) => `${hhmm(h.dispatchAt)}`).join(' → ')
+        : '');
+    }
+
+    connect({ state: render }, (ok) => {
+      $('conn').textContent = ok ? '서버 연결됨' : '서버 연결 끊김 — 재시도 중';
+      $('conn').classList.toggle('off', !ok);
+    });
+  </script>
+</body>
+</html>

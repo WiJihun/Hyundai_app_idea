@@ -1,0 +1,21 @@
+{
+  "name": "driveon",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DriveOn 웹 프로토타입 — 운전 중 음성 주문 + 도착 시간 맞춤 자동 전송",
+  "type": "module",
+  "engines": {
+    "node": ">=23.6"
+  },
+  "scripts": {
+    "start": "node server/src/index.ts",
+    "dev": "node --watch server/src/index.ts",
+    "test": "node --test \"server/test/*.test.ts\"",
+    "typecheck": "tsc -p server",
+    "build:dashboard": "node scripts/build-dashboard.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^7.0.2"
+  }
+}

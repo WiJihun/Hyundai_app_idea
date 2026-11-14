@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DriveOn 차량 화면</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <!-- Asta Sans: Pleos 시스템 글꼴 / Do Hyeon·Jua: 우아한형제들 BM 도현체·주아체 (Google Fonts, OFL) / Noto Sans KR: 본문 -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Asta+Sans:wght@400;600;800&family=Do+Hyeon&family=Jua&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" />
+  <link rel="stylesheet" href="/common/theme.css" />
+  <link rel="stylesheet" href="car.css" />
+</head>
+<body>
+  <div class="cockpit">
+    <!-- Pleos 상태바: 주행 상태 · Gleo · 음성 안내 -->
+    <header class="statusbar">
+      <div class="status" id="status"></div>
+      <div class="gleo-ctl">
+        <button id="gleoBtn" class="gleo-btn" type="button" aria-label="Gleo에게 말하기" aria-expanded="false"><span class="g-dot"></span>Gleo</button>
+        <button id="tts" class="tts" type="button" title="음성 안내 켜기/끄기">🔊</button>
+        <form id="sayForm" class="say-pop" hidden>
+          <span class="say-state" id="sayState">말씀하세요</span>
+          <input id="sayInput" type="text" autocomplete="off" placeholder="마이크가 없으면 여기에 입력 — 예: 치킨 시켜줘" />
+          <button type="submit">보내기</button>
+        </form>
+      </div>
+    </header>
+
+    <main class="split" id="split">
+      <!-- 멀티 윈도우: 내비(왼쪽) + DriveOn(오른쪽). 주문 뒤에는 내비를 넓히고 DriveOn은 아래 미니바로 -->
+      <section class="nav" id="nav"></section>
+      <button class="live" id="live" type="button" data-ui="expand" aria-label="주문 상태 크게 보기"></button>
+      <section class="app">
+        <div class="question" id="question"></div>
+        <div class="app-body" id="appBody"></div>
+        <div class="bottom" id="minibar"></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Gleo 안내(시스템 알림): 주문 전송·정체·매장 접수 같은 소식을 잠깐 보여 준다 -->
+  <div class="gleo-toast" id="gleoToast" hidden></div>
+  <!-- 인카페이먼트 결제 시트: 카드 고르기 → 차량·프로필 확인 + 결제 비밀번호(정차) / 음성 승인(주행) -->
+  <div class="pay-scrim" id="paySheet" hidden></div>
+  <!-- 카드사 앱 승인 알림 -->
+  <div class="card-toast" id="cardToast" hidden></div>
+
+  <div class="conn" id="conn">연결 중…</div>
+  <script type="module" src="car.js"></script>
+</body>
+</html>

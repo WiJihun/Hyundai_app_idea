@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DriveOn UI 둘러보기</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" />
+  <style>
+    /* 둘러보기: 왼쪽 장면 목록 · 가운데 실제 차량 화면과 POS · 아래 장면 설명 */
+    :root {
+      --bg: #eef0f3; --panel: #ffffff; --ink: #18202a; --sub: #66717f; --line: #dde1e6;
+      --bar: #121820; --bar-ink: #e9eef4; --bar-sub: #8f9bab;
+      --mint: #2ac1bc; --mint-press: #1fa9a4; --mint-soft: #e6f7f6;
+      --f-title: 'Do Hyeon', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+      --f-body: 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+      color-scheme: light;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body { background: var(--bg); color: var(--ink); font-family: var(--f-body); display: grid; grid-template-rows: auto 1fr; overflow: hidden; }
+    button { font: inherit; cursor: pointer; }
+    button:focus-visible, a:focus-visible { outline: 2px solid var(--mint-press); outline-offset: 2px; }
+
+    .top { background: var(--bar); color: var(--bar-ink); display: flex; align-items: center; gap: 14px; padding: 10px 16px; flex-wrap: wrap; }
+    .top h1 { font-family: var(--f-title); font-weight: 400; font-size: 24px; margin: 0; }
+    .top .count { color: var(--bar-sub); font-variant-numeric: tabular-nums; }
+    .top .sp { flex: 1; }
+    .nav-btn { background: #263140; color: var(--bar-ink); border: 1px solid #344255; border-radius: 10px; padding: 8px 16px; }
+    .nav-btn.next { background: var(--mint); border-color: var(--mint); color: #fff; font-weight: 700; }
+    .nav-btn:disabled { opacity: .4; cursor: default; }
+    .time { display: flex; align-items: center; gap: 4px; color: var(--bar-sub); font-size: 14px; }
+    .time b { color: var(--bar-ink); font-size: 18px; font-variant-numeric: tabular-nums; margin-right: 6px; }
+    .time button { background: transparent; color: var(--bar-ink); border: 1px solid #344255; border-radius: 8px; padding: 4px 9px; font-size: 13px; }
+    .time button.on { background: var(--bar-ink); color: var(--bar); }
+    .top a { color: var(--bar-sub); font-size: 13px; }
+
+    .wrap { display: grid; grid-template-columns: 270px minmax(0, 1fr); min-height: 0; }
+    .scenes { background: var(--panel); border-right: 1px solid var(--line); overflow: auto; padding: 8px 0 24px; }
+    .chapter { font-size: 12px; font-weight: 700; color: var(--sub); letter-spacing: .04em; padding: 14px 16px 6px; }
+    .scene { display: flex; gap: 10px; align-items: baseline; width: 100%; text-align: left; border: 0; background: transparent; padding: 8px 16px; color: var(--ink); font-size: 15px; }
+    .scene .n { font-variant-numeric: tabular-nums; color: var(--sub); font-size: 13px; width: 20px; flex: none; }
+    .scene:hover { background: var(--bg); }
+    .scene.on { background: var(--mint-soft); box-shadow: inset 4px 0 0 var(--mint); font-weight: 700; }
+
+    .main { display: grid; grid-template-rows: auto auto; align-content: start; gap: 14px; padding: 14px 16px 20px; overflow: auto; min-height: 0; }
+    .stage { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); gap: 12px; align-items: start; }
+    .frame { display: grid; gap: 6px; min-width: 0; }
+    .frame .lbl { font-size: 13px; color: var(--sub); display: flex; gap: 8px; align-items: center; }
+    .frame .lbl a { color: var(--sub); }
+    .viewport { position: relative; overflow: hidden; border-radius: 12px; background: #0b0f14; box-shadow: 0 6px 22px rgba(17, 24, 39, .18); }
+    .viewport iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: 0 0; }
+    .busy-veil { position: absolute; inset: 0; display: none; place-items: center; background: rgba(11, 15, 20, .35); color: #fff; font-weight: 700; z-index: 2; }
+    .loading .busy-veil { display: grid; }
+
+    .caption { background: var(--panel); border-radius: 12px; padding: 18px 20px; display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 20px; }
+    .caption .ch { font-size: 13px; color: var(--mint-press); font-weight: 700; }
+    .caption h2 { font-family: var(--f-title); font-weight: 400; font-size: 30px; margin: 2px 0 8px; text-wrap: balance; }
+    .caption p { margin: 0; font-size: 16px; line-height: 1.7; color: #2c3743; max-width: 68ch; }
+    .try h3 { margin: 0 0 8px; font-size: 15px; }
+    .try ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; font-size: 15px; line-height: 1.55; color: #2c3743; }
+    .try .note { margin-top: 10px; font-size: 13px; color: var(--sub); }
+    .err { color: #c0392b; font-size: 14px; margin-top: 8px; }
+
+    @media (max-width: 1100px) {
+      .stage { grid-template-columns: 1fr; }
+      .caption { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 760px) {
+      body { overflow: auto; height: auto; }
+      .wrap { grid-template-columns: 1fr; }
+      .scenes { border-right: 0; border-bottom: 1px solid var(--line); max-height: 220px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <h1>DriveOn UI 둘러보기</h1>
+    <span class="count" id="count">–</span>
+    <button class="nav-btn" id="prev" type="button">◀ 이전</button>
+    <button class="nav-btn next" id="next" type="button">다음 ▶</button>
+    <span class="sp"></span>
+    <div class="time" id="time"></div>
+    <a href="/" title="시연 무대(차량·POS·데모 패널 한 화면)">시연 무대</a>
+    <a href="/dashboard/" title="캡처로 만든 한 장짜리 대시보드">대시보드</a>
+    <button class="nav-btn" id="capture" type="button" title="모든 장면을 캡처해 dashboard/snapshots에 저장 (그다음 npm run build:dashboard)">대시보드용 캡처</button>
+  </header>
+
+  <div class="wrap">
+    <nav class="scenes" id="scenes" aria-label="장면 목록"></nav>
+    <main class="main">
+      <div class="stage">
+        <div class="frame">
+          <div class="lbl">차량 화면 (Pleos Connect 17″ · 1440×860) — 화면 안을 직접 눌러도 됩니다 · <a href="/car/" target="_blank">새 창</a></div>
+          <div class="viewport" id="carVp" data-w="1440" data-h="860"><iframe id="car" src="/car/" title="차량 화면"></iframe><div class="busy-veil">장면 준비 중…</div></div>
+        </div>
+        <div class="frame">
+          <div class="lbl">매장 POS (주문접수) · <a href="/pos/" target="_blank">새 창</a></div>
+          <div class="viewport" id="posVp" data-w="1280" data-h="800"><iframe id="pos" src="/pos/" title="매장 POS"></iframe><div class="busy-veil">장면 준비 중…</div></div>
+        </div>
+      </div>
+      <section class="caption" aria-live="polite">
+        <div>
+          <div class="ch" id="chapter"></div>
+          <h2 id="title"></h2>
+          <p id="desc"></p>
+          <div class="err" id="err" hidden></div>
+        </div>
+        <div class="try">
+          <h3>이렇게 해 보세요</h3>
+          <ul id="try"></ul>
+          <div class="note">장면을 고르면 서버 상태를 처음부터 다시 만들어 그 화면을 띄웁니다. 시간은 계속 흐르니, 멈추려면 위의 ⏸를 누르세요.</div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="tour.js"></script>
+</body>
+</html>

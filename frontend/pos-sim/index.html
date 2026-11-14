@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>매장 주문접수 (POS 시뮬레이터)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <!-- Do Hyeon·Jua: 우아한형제들 BM 도현체·주아체 (Google Fonts, OFL) -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=Jua&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" />
+  <link rel="stylesheet" href="/common/theme.css" />
+  <style>
+    /* 배달앱 사장님용 주문접수 화면식: 민트 머리띠, 왼쪽 신규·처리중·완료 목록, 오른쪽 주문 상세와 큰 접수 버튼 */
+    :root {
+      --mint: #2ac1bc; --mint-press: #1fa9a4; --mint-soft: #e8f8f7;
+      --ink: #1e1e1e; --sub: #6f6f6f; --faint: #a0a0a0; --line: #e8e8e8; --gray: #f2f3f5; --white: #ffffff;
+      --red: #ef4f56; --orange: #ff7a00; --green-bg: #e7f8ee; --green: #16a05a;
+      --f-title: 'Do Hyeon', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+      --f-badge: 'Jua', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+      --f-body: 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+      color-scheme: light;
+    }
+    body { background: var(--gray); color: var(--ink); font-family: var(--f-body); display: grid; grid-template-rows: auto 1fr; height: 100vh; overflow: hidden; }
+    button { font-family: var(--f-body); color: var(--ink); background: var(--white); border: 1px solid var(--line); }
+    button:hover { border-color: #cfcfcf; }
+    button:focus-visible { outline: 2px solid var(--mint-press); outline-offset: 2px; }
+
+    header { background: var(--mint); color: #fff; display: flex; align-items: center; gap: 12px; padding: 10px 16px; flex-wrap: wrap; }
+    header h1 { font-family: var(--f-title); font-weight: 400; font-size: 26px; margin: 0; }
+    header .demo { font-size: 12px; border: 1px solid rgba(255,255,255,.6); border-radius: 999px; padding: 1px 8px; }
+    header select { font: inherit; font-size: 15px; color: var(--ink); background: #fff; border: 0; border-radius: 8px; padding: 6px 10px; }
+    header .open { font-family: var(--f-badge); background: #fff; color: var(--mint-press); border-radius: 999px; padding: 2px 10px; font-size: 14px; }
+    header .sp { flex: 1; }
+    header .clock { font-size: 24px; font-weight: 900; font-variant-numeric: tabular-nums; }
+    .busy { display: flex; align-items: center; gap: 4px; font-size: 14px; }
+    .busy button { background: rgba(255,255,255,.2); color: #fff; border: 1px solid rgba(255,255,255,.5); border-radius: 8px; padding: 4px 10px; font-size: 14px; }
+    .busy button.on { background: #fff; color: var(--mint-press); font-weight: 700; }
+    .busy button:disabled { opacity: .5; }
+
+    main { display: grid; grid-template-columns: minmax(280px, 380px) minmax(0, 1fr); gap: 0; min-height: 0; }
+    .left { background: var(--white); border-right: 1px solid var(--line); display: grid; grid-template-rows: auto 1fr auto; min-height: 0; }
+    .tabs { display: grid; grid-template-columns: repeat(3, 1fr); border-bottom: 1px solid var(--line); }
+    .tabs button { border: 0; border-radius: 0; background: transparent; padding: 14px 6px 11px; font-size: 17px; color: var(--sub); border-bottom: 3px solid transparent; }
+    .tabs button.on { color: var(--ink); font-weight: 900; border-bottom-color: var(--mint); }
+    .tabs .n { font-family: var(--f-badge); display: inline-grid; place-items: center; min-width: 22px; height: 22px; border-radius: 11px; padding: 0 6px; margin-left: 4px; font-size: 13px; background: var(--gray); color: var(--sub); }
+    .tabs .n.hot { background: var(--red); color: #fff; }
+    .list { overflow: auto; min-height: 0; }
+    .item { display: grid; gap: 4px; width: 100%; text-align: left; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; padding: 14px 16px; background: #fff; }
+    .item.sel { background: var(--mint-soft); box-shadow: inset 4px 0 0 var(--mint); }
+    .item .r1 { display: flex; align-items: center; gap: 8px; }
+    .item .tm { font-size: 20px; font-weight: 900; font-variant-numeric: tabular-nums; }
+    .item .r2 { font-size: 15px; }
+    .item .r3 { font-size: 13px; color: var(--sub); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .item .st { margin-left: auto; font-size: 13px; color: var(--sub); }
+    .new-dot { font-family: var(--f-badge); background: var(--red); color: #fff; border-radius: 4px; padding: 0 6px; font-size: 13px; animation: blink 1s steps(2, start) 6; }
+    .mode { font-family: var(--f-badge); font-size: 14px; border-radius: 4px; padding: 0 6px; }
+    .mode.DELIVERY { color: var(--mint-press); background: var(--mint-soft); }
+    .mode.PICKUP { color: var(--orange); background: #fff2e5; }
+    .plate { font-weight: 900; letter-spacing: .03em; background: var(--ink); color: #fff; border-radius: 4px; padding: 0 6px; font-size: 13px; }
+    .here { font-family: var(--f-badge); color: var(--green); background: var(--green-bg); border-radius: 4px; padding: 0 6px; font-size: 13px; }
+    .empty { color: var(--faint); padding: 28px 16px; text-align: center; font-size: 15px; }
+    .waiting { border-top: 1px dashed var(--line); padding: 10px 16px 12px; font-size: 13px; color: var(--sub); background: #fafafa; }
+    .waiting b { color: var(--ink); }
+    .waiting .w { display: flex; gap: 8px; padding: 3px 0; font-variant-numeric: tabular-nums; }
+
+    .detail { overflow: auto; min-height: 0; padding: 16px; display: grid; gap: 12px; align-content: start; }
+    .card { background: var(--white); border-radius: 12px; padding: 16px 18px; }
+    .d-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .d-head .mode { font-size: 18px; padding: 2px 10px; }
+    .d-head h2 { font-family: var(--f-title); font-weight: 400; font-size: 30px; margin: 0; }
+    .d-head .id { margin-left: auto; color: var(--faint); font-size: 13px; }
+    .arrived { display: flex; align-items: center; gap: 10px; background: var(--green-bg); color: var(--green); border-radius: 10px; padding: 12px 14px; font-size: 18px; font-weight: 900; }
+    .kv { display: grid; grid-template-columns: auto 1fr; gap: 8px 18px; font-size: 16px; }
+    .kv span:nth-child(odd) { color: var(--sub); }
+    .kv b { font-variant-numeric: tabular-nums; }
+    .kv .big { font-size: 22px; }
+    .moved { color: var(--orange); font-size: 14px; }
+    .lines .ln { display: flex; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); font-size: 18px; }
+    .lines .ln:last-child { border-bottom: 0; }
+    .lines .ln .nm { flex: 1; min-width: 0; font-weight: 700; }
+    .lines .ln .nm small { display: block; color: var(--sub); font-weight: 400; font-size: 14px; }
+    .lines .ln .q { font-weight: 900; width: 40px; text-align: center; }
+    .lines .ln .p { width: 100px; text-align: right; font-variant-numeric: tabular-nums; }
+    .sum { display: flex; justify-content: space-between; font-size: 16px; padding: 3px 0; font-variant-numeric: tabular-nums; }
+    .sum.total { font-size: 20px; font-weight: 900; border-top: 1px solid var(--line); margin-top: 6px; padding-top: 10px; }
+    .paid { font-size: 14px; color: var(--sub); margin-top: 6px; }
+    .actions { display: grid; grid-template-columns: 1fr 2fr; gap: 10px; }
+    .actions button { padding: 18px; font-size: 20px; border-radius: 12px; font-weight: 700; }
+    .actions .go { background: var(--mint); border-color: var(--mint); color: #fff; }
+    .actions .go:hover { background: var(--mint-press); }
+    .actions .done { background: var(--gray); color: var(--sub); border-color: var(--line); grid-column: 1 / -1; }
+    .note { font-size: 13px; color: var(--sub); }
+    .flash { animation: pop 1.4s ease-out 3; }
+    @keyframes pop { 0% { box-shadow: 0 0 0 0 rgba(42,193,188,.6); } 70% { box-shadow: 0 0 0 14px rgba(42,193,188,0); } }
+    @keyframes blink { to { visibility: hidden; } }
+    @media (prefers-reduced-motion: reduce) { .new-dot, .flash { animation: none; } }
+    @media (max-width: 760px) {
+      body { height: auto; overflow: auto; }
+      main { grid-template-columns: 1fr; }
+      .left { border-right: 0; }
+      .list { max-height: 320px; }
+    }
+    .conn { color: var(--sub); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>주문접수</h1><span class="demo">시연용 POS</span>
+    <select id="store" aria-label="매장 선택"></select>
+    <span class="open">영업중</span>
+    <span class="sp"></span>
+    <div class="busy" id="busy"></div>
+    <span class="clock" id="clock">–</span>
+  </header>
+  <main>
+    <section class="left">
+      <div class="tabs" id="tabs"></div>
+      <div class="list" id="list"></div>
+      <div class="waiting" id="waiting"></div>
+    </section>
+    <section class="detail" id="detail"></section>
+  </main>
+  <div class="conn" id="conn">연결 중…</div>
+  <script type="module">
+    import { api, connect, esc, hhmm, won, MODE, patch, remain } from '/common/common.js';
+    const $ = (id) => document.getElementById(id);
+
+    let selectedStore = 's01';
+    try { selectedStore = localStorage.getItem('driveon.pos.store') || 's01'; } catch {}
+    let tab = 'NEW';
+    let selectedOrder = null;
+    let last = null;
+    const flashIds = new Set();
+
+    function beep(high) {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        [0, 0.18, 0.36].slice(0, high ? 3 : 2).forEach((t, i) => {
+          const o = ctx.createOscillator(), g = ctx.createGain();
+          o.frequency.value = [880, 1320, 1760][i];
+          g.gain.setValueAtTime(0.25, ctx.currentTime + t);
+          g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.16);
+          o.connect(g).connect(ctx.destination);
+          o.start(ctx.currentTime + t);
+          o.stop(ctx.currentTime + t + 0.17);
+        });
+      } catch {}
+    }
+
+    $('store').onchange = (e) => {
+      selectedStore = e.target.value;
+      selectedOrder = null;
+      try { localStorage.setItem('driveon.pos.store', selectedStore); } catch {}
+      if (last) render(last);
+    };
+    document.addEventListener('click', async (e) => {
+      const t = e.target.closest('[data-tab]');
+      if (t) { tab = t.dataset.tab; selectedOrder = null; return last && render(last); }
+      const it = e.target.closest('[data-order]');
+      if (it) { selectedOrder = it.dataset.order; return last && render(last); }
+      const b = e.target.closest('[data-cong]');
+      if (b && selectedStore !== 'all') return api(`/pos/stores/${selectedStore}/congestion`, { extraPrepMin: Number(b.dataset.cong) });
+      const s = e.target.closest('[data-step]');
+      if (s) {
+        try {
+          await api(`/pos/orders/${s.dataset.id}/${s.dataset.step}`, {});
+          tab = s.dataset.step === 'accept' ? 'ACCEPTED' : 'DONE';
+        } catch (err) { console.error(err); }
+      }
+    });
+
+    const inStore = (o) => selectedStore === 'all' || o.storeId === selectedStore;
+    const items = (o) => o.lines.map((l) => `${esc(l.name)} ${l.qty}`).join(', ');
+
+    function listItem(o) {
+      const isNew = o.storeStatus === 'NEW';
+      const stLabel = { NEW: '', ACCEPTED: `${hhmm(o.acceptedAt)} 접수`, DONE: `${hhmm(o.doneAt)} 완료` }[o.storeStatus] ?? '';
+      return `<button class="item ${o.id === selectedOrder ? 'sel' : ''}" data-order="${esc(o.id)}">
+        <div class="r1"><span class="mode ${o.mode}">${MODE[o.mode]}</span><span class="tm">${o.display.sentAt}</span>${isNew ? '<span class="new-dot">NEW</span>' : ''}<span class="st">${stLabel}</span></div>
+        <div class="r2">${items(o)}</div>
+        <div class="r3">${won(o.total)} · 고객 도착 ${o.display.pickupEta}
+          ${o.vehicle ? `<span class="plate">${esc(o.vehicle.plate)}</span>` : ''}
+          ${o.customerArrivedAt ? '<span class="here">고객 도착</span>' : ''}
+          ${selectedStore === 'all' ? `· ${esc(o.storeName)}` : ''}</div>
+      </button>`;
+    }
+
+    function detail(o, st) {
+      if (!o) return `<div class="card empty">${tab === 'NEW' ? '새 주문이 들어오면 여기에 보여요.<br/>DriveOn이 고객 도착 시각에 맞춰 주문을 보냅니다.' : '왼쪽에서 주문을 고르세요.'}</div>`;
+      const moved = o.etaHistory.length && o.etaHistory[o.etaHistory.length - 1].pickupEta !== o.pickupEta;
+      const pay = o.payment.card ? `${esc(o.payment.card.issuer)} ${esc(o.payment.installment ?? '')}` : '';
+      const who = o.mode === 'DELIVERY'
+        ? `<span>배달 출발 목표</span><b class="big">${hhmm(o.sentAt + o.prepMin * 60000)}</b>
+           <span>고객 집 도착 예정</span><b class="big">${o.display.pickupEta}</b>`
+        : `<span>차량번호</span><span><span class="plate" style="font-size:18px;padding:2px 10px">${esc(o.vehicle?.plate ?? '미등록')}</span></span>
+           <span>준비 완료 목표</span><b class="big">${o.display.readyAt}</b>
+           <span>고객 매장 도착 예정</span><b class="big">${o.display.pickupEta}</b>`;
+      let actions;
+      if (o.storeStatus === 'NEW') {
+        actions = `<button data-tab="NEW" disabled title="거부는 시연 범위 밖">거부</button>
+          <button class="go" data-step="accept" data-id="${esc(o.id)}">접수하기 · 조리 ${o.prepMin}분</button>`;
+      } else if (o.storeStatus === 'ACCEPTED') {
+        actions = `<button data-tab="ACCEPTED" disabled>접수됨 ${hhmm(o.acceptedAt)}</button>
+          <button class="go" data-step="complete" data-id="${esc(o.id)}">${o.mode === 'DELIVERY' ? '조리 완료 · 배달 출발' : '조리 완료 · 픽업 대기'}</button>`;
+      } else {
+        actions = `<button class="done" disabled>${hhmm(o.doneAt)} 완료된 주문</button>`;
+      }
+      return `<div class="card ${flashIds.has(o.id) ? 'flash' : ''}">
+          <div class="d-head"><span class="mode ${o.mode}">${MODE[o.mode]}</span><h2>${o.display.sentAt} 접수</h2><span class="id">${esc(o.id)} · ${esc(o.storeName)}</span></div>
+        </div>
+        ${o.customerArrivedAt ? `<div class="arrived">🚗 ${o.vehicle ? esc(o.vehicle.plate) + ' ' : ''}고객이 ${hhmm(o.customerArrivedAt)}에 도착했어요 · 음식을 건네 주세요</div>` : ''}
+        <div class="card"><div class="kv">${who}<span>조리 시간</span><b>${o.prepMin}분${o.prepMin > o.itemPrepMin ? ` (혼잡 +${o.prepMin - o.itemPrepMin}분)` : ''}</b></div>
+          ${moved && !o.customerArrivedAt ? '<div class="moved" style="margin-top:8px">고객 도착 예정이 내비 시간으로 갱신됐어요</div>' : ''}</div>
+        <div class="card"><div class="lines">${o.lines.map((l) => `<div class="ln"><span class="nm">${esc(l.name)}${l.options.length ? `<small>+ ${esc(l.options.map((x) => x.name).join(', '))}</small>` : ''}</span><span class="q">${l.qty}</span><span class="p">${won(l.lineTotal)}</span></div>`).join('')}</div>
+          <div class="sum"><span>주문금액</span><span>${won(o.itemsTotal ?? o.total)}</span></div>
+          <div class="sum"><span>배달팁</span><span>${won(o.deliveryTip ?? 0)}</span></div>
+          <div class="sum total"><span>결제금액</span><span>${won(o.total)}</span></div>
+          <div class="paid">인카페이먼트 결제완료 ${pay ? `· ${pay}` : ''} · 승인번호 ${esc(o.payment.approvalNo)}</div></div>
+        <div class="actions">${actions}</div>
+        <div class="note">DriveOn이 고객 도착 시각에서 거꾸로 계산해 보낸 주문이에요. 매장은 조리 시간(혼잡)만 바꾸면 됩니다.</div>`;
+    }
+
+    function render(st) {
+      last = st;
+      $('clock').textContent = st.display;
+      if (!$('store').options.length) {
+        $('store').innerHTML = st.stores.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('') + `<option value="all">전체 매장</option>`;
+        $('store').value = selectedStore;
+      }
+      const store = st.stores.find((s) => s.id === selectedStore);
+      patch($('busy'), `조리 +${[0, 5, 10, 15].map((m) => `<button class="${store?.congestionMin === m ? 'on' : ''}" data-cong="${m}" ${store ? '' : 'disabled'}>${m ? `${m}분` : '보통'}</button>`).join('')}`);
+
+      const sent = st.orders.filter((o) => o.status === 'SENT' && inStore(o));
+      const by = { NEW: [], ACCEPTED: [], DONE: [] };
+      for (const o of sent) by[o.storeStatus]?.push(o);
+      by.NEW.sort((a, b) => b.sentAt - a.sentAt);
+      by.ACCEPTED.sort((a, b) => b.acceptedAt - a.acceptedAt);
+      by.DONE.sort((a, b) => b.doneAt - a.doneAt);
+      patch($('tabs'), [['NEW', '신규'], ['ACCEPTED', '처리중'], ['DONE', '완료']]
+        .map(([k, l]) => `<button class="${tab === k ? 'on' : ''}" data-tab="${k}">${l}<span class="n ${k === 'NEW' && by.NEW.length ? 'hot' : ''}">${by[k].length}</span></button>`).join(''));
+      const list = by[tab];
+      if (!list.some((o) => o.id === selectedOrder)) selectedOrder = list[0]?.id ?? null;
+      patch($('list'), list.map(listItem).join('') || `<div class="empty">${{ NEW: '신규 주문이 없어요', ACCEPTED: '처리 중인 주문이 없어요', DONE: '완료된 주문이 없어요' }[tab]}</div>`);
+      patch($('detail'), detail(list.find((o) => o.id === selectedOrder), st));
+
+      const waiting = st.orders.filter((o) => o.status === 'SCHEDULED' && inStore(o));
+      patch($('waiting'), waiting.length
+        ? `<b>(시연용) 전송 대기 ${waiting.length}건</b> — 실제 매장에는 보이지 않아요` +
+          waiting.map((o) => `<div class="w"><span class="mode ${o.mode}">${MODE[o.mode]}</span><span>${o.display.dispatchAt} 전송 예정</span><span>${remain(o.dispatchAt - st.now)}</span><span>${items(o)}</span></div>`).join('')
+        : '(시연용) 전송 대기 중인 주문이 없어요');
+    }
+
+    // UI 둘러보기(/tour/)에서 보내는 명령: 매장·탭 고르기
+    window.addEventListener('message', (e) => {
+      if (e.origin !== location.origin || e.data?.type !== 'driveon:pos') return;
+      if (e.data.store) {
+        selectedStore = e.data.store;
+        $('store').value = selectedStore;
+      }
+      if (e.data.tab) tab = e.data.tab;
+      selectedOrder = null;
+      if (last) render(last);
+    });
+
+    connect(
+      {
+        state: render,
+        'pos.order': (d) => {
+          if (!inStore(d.order)) return;
+          if (d.kind === 'sent') {
+            tab = 'NEW';
+            selectedOrder = d.order.id;
+            flashIds.add(d.order.id);
+            setTimeout(() => flashIds.delete(d.order.id), 4500);
+            beep(false);
+          }
+          if (d.kind === 'arrived') beep(true);
+        },
+      },
+      (ok) => {
+        $('conn').textContent = ok ? '서버 연결됨' : '서버 연결 끊김 — 재시도 중';
+        $('conn').classList.toggle('off', !ok);
+      },
+    );
+  </script>
+</body>
+</html>
