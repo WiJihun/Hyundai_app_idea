@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>DriveOn 차량 UI 대시보드</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Asta+Sans:wght@400;600;800&family=Do+Hyeon&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" />
+  <style>
+    /* 쇼룸: 어두운 바탕 위에 차량 디스플레이(베젤) 하나, 옆에 장면 설명과 매장 POS, 아래에 장면 띠 */
+    :root {
+      --bg: #0c0f13; --panel: #151a21; --panel-2: #1c232c; --line: #28313c;
+      --ink: #eef2f6; --sub: #93a0af; --faint: #5e6b7a;
+      --mint: #2ac1bc; --mint-ink: #04201f;
+      --f-title: 'Do Hyeon', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+      --f-body: 'Noto Sans KR', 'Malgun Gothic', 'Apple SD Gothic Neo', system-ui, sans-serif;
+      --f-ui: 'Asta Sans', 'Noto Sans KR', system-ui, sans-serif;
+      color-scheme: dark;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body { background: radial-gradient(1200px 600px at 40% 30%, #17202a 0%, var(--bg) 70%); color: var(--ink); font-family: var(--f-body); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; }
+    button { font: inherit; color: inherit; cursor: pointer; }
+    button:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; }
+
+    /* 위 */
+    .top { display: flex; align-items: center; gap: 14px; padding: 12px 20px; flex-wrap: wrap; }
+    .brand { font-family: var(--f-ui); font-weight: 800; font-size: 20px; letter-spacing: -0.01em; }
+    .brand span { color: var(--sub); font-weight: 600; margin-left: 8px; font-size: 15px; }
+    .chapters { display: flex; gap: 6px; flex-wrap: wrap; }
+    .chapters button { background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 5px 12px; font-size: 13px; color: var(--sub); }
+    .chapters button.on { border-color: var(--mint); color: var(--ink); }
+    .sp { flex: 1; }
+    .ctl { display: flex; align-items: center; gap: 8px; }
+    .ctl button { background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 7px 14px; font-size: 14px; }
+    .ctl button.on { background: var(--mint); border-color: var(--mint); color: var(--mint-ink); font-weight: 700; }
+    .ctl .pos-n { font-variant-numeric: tabular-nums; color: var(--sub); min-width: 64px; text-align: center; }
+    .ctl .pos-n b { color: var(--ink); }
+
+    /* 가운데 */
+    .stage { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 22px; padding: 4px 20px 12px; min-height: 0; align-items: start; }
+    .display { min-width: 0; display: grid; gap: 10px; justify-items: center; }
+    .bezel { width: 100%; max-width: calc((100vh - 270px) * 1440 / 860 + 36px); padding: 18px; border-radius: 30px; background: linear-gradient(160deg, #23272d, #08090b 55%, #1a1d22); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
+    .fit { position: relative; overflow: hidden; border-radius: 14px; background: #000; }
+    .fit iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: 0 0; }
+    .screen { cursor: pointer; }
+    .hint { font-size: 13px; color: var(--faint); }
+
+    .side { display: grid; gap: 14px; align-content: start; min-height: 0; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px; display: grid; gap: 8px; }
+    .card .ch { font-size: 13px; color: var(--mint); font-weight: 700; }
+    .card .no { font-family: var(--f-ui); font-size: 13px; color: var(--sub); font-variant-numeric: tabular-nums; }
+    .card h1 { font-family: var(--f-title); font-weight: 400; font-size: 30px; line-height: 1.2; margin: 0; text-wrap: balance; }
+    .card p { margin: 0; font-size: 15px; line-height: 1.7; color: #c7d0da; }
+    .card ul { margin: 4px 0 0; padding-left: 18px; font-size: 14px; line-height: 1.6; color: var(--sub); display: grid; gap: 4px; }
+    .pos-card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 12px; display: grid; gap: 8px; }
+    .pos-card .lbl { font-size: 13px; color: var(--sub); }
+
+    /* 아래: 장면 띠 */
+    .strip { display: flex; gap: 10px; overflow-x: auto; padding: 10px 20px 16px; border-top: 1px solid var(--line); background: rgba(10, 13, 17, 0.7); scroll-behavior: smooth; }
+    .thumb { flex: 0 0 172px; background: transparent; border: 0; padding: 0; text-align: left; display: grid; gap: 6px; }
+    .thumb .fit { border: 2px solid transparent; border-radius: 8px; }
+    .thumb iframe { pointer-events: none; }
+    .thumb .t { font-size: 12px; color: var(--sub); line-height: 1.35; display: flex; gap: 6px; }
+    .thumb .t b { font-family: var(--f-ui); color: var(--faint); font-variant-numeric: tabular-nums; }
+    .thumb.on .fit { border-color: var(--mint); }
+    .thumb.on .t { color: var(--ink); }
+    .thumb:hover .t { color: var(--ink); }
+
+    /* 전체 보기 */
+    .grid { position: fixed; inset: 0; z-index: 10; background: rgba(8, 10, 13, 0.97); overflow: auto; padding: 18px 24px 40px; }
+    .grid[hidden] { display: none; }
+    .grid header { display: flex; align-items: center; gap: 12px; margin-bottom: 8px; }
+    .grid h2 { font-family: var(--f-title); font-weight: 400; font-size: 26px; margin: 0; }
+    .grid header button { margin-left: auto; background: var(--panel-2); border: 1px solid var(--line); border-radius: 10px; padding: 7px 14px; }
+    .grid h3 { font-size: 14px; color: var(--mint); margin: 22px 0 10px; }
+    .grid .row { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+    .grid .thumb { flex: none; }
+    .grid .thumb .t { font-size: 14px; }
+
+    .foot { position: fixed; right: 12px; bottom: 4px; font-size: 11px; color: var(--faint); pointer-events: none; }
+
+    @media (max-width: 1100px) {
+      body { overflow: auto; height: auto; }
+      .stage { grid-template-columns: 1fr; }
+      .bezel { max-width: none; }
+    }
+    @media (max-width: 600px) {
+      .top { padding: 10px 16px; }
+      .stage { padding: 4px 16px 12px; }
+      .bezel { padding: 8px; border-radius: 16px; }
+      .strip { padding: 10px 16px 14px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .strip { scroll-behavior: auto; } }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">DriveOn<span>차량 UI 대시보드</span></div>
+    <nav class="chapters" id="chapters" aria-label="장"></nav>
+    <span class="sp"></span>
+    <div class="ctl">
+      <button id="prev" type="button" aria-label="이전 장면">◀</button>
+      <span class="pos-n" id="posN"></span>
+      <button id="next" type="button" aria-label="다음 장면">▶</button>
+      <button id="play" type="button">자동 재생</button>
+      <button id="gridBtn" type="button">전체 보기</button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <section class="display">
+      <div class="bezel"><div class="fit screen" id="carFit" data-w="1440" data-h="860"><iframe id="carF" title="차량 화면" tabindex="-1"></iframe></div></div>
+      <div class="hint">화면 속 버튼을 누르거나 ◀ ▶ · 키보드 ← → 로 넘깁니다. 스페이스바는 자동 재생.</div>
+    </section>
+    <aside class="side">
+      <div class="card" aria-live="polite">
+        <div><span class="ch" id="ch"></span> <span class="no" id="no"></span></div>
+        <h1 id="title"></h1>
+        <p id="desc"></p>
+        <ul id="tryIt"></ul>
+      </div>
+      <div class="pos-card">
+        <div class="lbl">같은 순간 · 매장 POS(주문접수)</div>
+        <div class="fit" id="posFit" data-w="1280" data-h="800"><iframe id="posF" title="매장 POS" tabindex="-1"></iframe></div>
+      </div>
+    </aside>
+  </main>
+
+  <nav class="strip" id="strip" aria-label="장면 목록"></nav>
+
+  <div class="grid" id="grid" hidden>
+    <header><h2>전체 장면</h2><span style="color:var(--sub)" id="gridCount"></span><button id="gridClose" type="button">닫기 (Esc)</button></header>
+    <div id="gridBody"></div>
+  </div>
+
+  <div class="foot">시연용 프로토타입 화면 캡처 · 결제는 모두 모의 결제 · 매장·카드·차량 정보는 가상</div>
+
+  <script id="data" type="application/json">/*__DATA__*/null</script>
+  <script>
+    const DATA = JSON.parse(document.getElementById('data').textContent);
+    const S = DATA.scenes;
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+    const FONTS = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Asta+Sans:wght@400;600;800&family=Do+Hyeon&family=Jua&family=Noto+Sans+KR:wght@400;500;700;900&display=swap">';
+    // 캡처 화면 안에서 버튼을 누르면 다음 장면으로 (동작은 하지 않고 넘김만)
+    const CLICK = '<script>document.addEventListener("click",function(e){e.preventDefault();e.stopPropagation();parent.postMessage({driveon:"next"},"*")},true);document.addEventListener("submit",function(e){e.preventDefault()},true)<\/script>';
+    const carDoc = (sc, live) => `<!doctype html><html lang="ko"><head><meta charset="utf-8">${FONTS}<style>${DATA.css.theme}\n${DATA.css.car}\nbody{overflow:hidden}</style></head><body>${sc.car}${live ? CLICK : ''}</body></html>`;
+    const posDoc = (sc) => `<!doctype html><html lang="ko"><head><meta charset="utf-8">${FONTS}<style>${DATA.css.theme}\n${DATA.css.pos}\nbody{overflow:hidden}</style></head><body>${sc.pos}</body></html>`;
+
+    // 실제 해상도로 그린 뒤 상자 폭에 맞춰 축소
+    function fit(box) {
+      const w = +box.dataset.w, h = +box.dataset.h, s = box.clientWidth / w;
+      const f = box.querySelector('iframe');
+      f.style.width = w + 'px';
+      f.style.height = h + 'px';
+      f.style.transform = `scale(${s})`;
+      box.style.height = h * s + 'px';
+    }
+    const ro = new ResizeObserver((es) => es.forEach((e) => fit(e.target)));
+
+    function thumb(sc, i, lazy) {
+      return `<button class="thumb" data-i="${i}" type="button" aria-label="${i + 1}. ${esc(sc.title)}">
+        <div class="fit" data-w="1440" data-h="860"><iframe ${lazy ? 'loading="lazy"' : ''} tabindex="-1" aria-hidden="true" data-i="${i}"></iframe></div>
+        <span class="t"><b>${String(i + 1).padStart(2, '0')}</b>${esc(sc.title)}</span></button>`;
+    }
+    function hydrate(root) {
+      root.querySelectorAll('.fit').forEach((b) => ro.observe(b));
+      root.querySelectorAll('iframe[data-i]').forEach((f) => { f.srcdoc = carDoc(S[+f.dataset.i], false); });
+    }
+
+    // 장 · 띠 · 전체 보기
+    const chapters = [...new Set(S.map((s) => s.chapter))];
+    $('chapters').innerHTML = chapters.map((c) => `<button type="button" data-ch="${esc(c)}">${esc(c)}</button>`).join('');
+    $('strip').innerHTML = S.map((s, i) => thumb(s, i, true)).join('');
+    hydrate($('strip'));
+    let gridBuilt = false;
+    function openGrid() {
+      if (!gridBuilt) {
+        $('gridBody').innerHTML = chapters.map((c) => `<h3>${esc(c)}</h3><div class="row">${S.map((s, i) => (s.chapter === c ? thumb(s, i, true) : '')).join('')}</div>`).join('');
+        hydrate($('gridBody'));
+        gridBuilt = true;
+      }
+      $('gridCount').textContent = `${S.length}개 장면 · 누르면 그 장면으로`;
+      $('grid').hidden = false;
+      stop();
+    }
+    const closeGrid = () => ($('grid').hidden = true);
+
+    // 장면 보이기
+    let cur = 0;
+    ro.observe($('carFit'));
+    ro.observe($('posFit'));
+    function show(i) {
+      cur = (i + S.length) % S.length;
+      const sc = S[cur];
+      $('carF').srcdoc = carDoc(sc, true);
+      $('posF').srcdoc = posDoc(sc);
+      $('ch').textContent = sc.chapter;
+      $('no').textContent = `${cur + 1} / ${S.length}`;
+      $('title').textContent = sc.title;
+      $('desc').textContent = sc.desc;
+      $('tryIt').innerHTML = (sc.tryIt ?? []).map((t) => `<li>${esc(t)}</li>`).join('');
+      $('posN').innerHTML = `<b>${cur + 1}</b> / ${S.length}`;
+      document.querySelectorAll('#chapters button').forEach((b) => b.classList.toggle('on', b.dataset.ch === sc.chapter));
+      document.querySelectorAll('#strip .thumb').forEach((b) => b.classList.toggle('on', +b.dataset.i === cur));
+      $('strip').querySelector(`.thumb[data-i="${cur}"]`)?.scrollIntoView({ block: 'nearest', inline: 'center' });
+      try { history.replaceState(null, '', '#' + sc.id); } catch {}
+    }
+
+    // 자동 재생
+    let timer = 0;
+    function stop() { clearInterval(timer); timer = 0; $('play').classList.remove('on'); $('play').textContent = '자동 재생'; }
+    function play() { stop(); timer = setInterval(() => (cur === S.length - 1 ? stop() : show(cur + 1)), 4500); $('play').classList.add('on'); $('play').textContent = '멈춤'; }
+    const togglePlay = () => (timer ? stop() : play());
+
+    // 입력
+    document.addEventListener('click', (e) => {
+      const t = e.target.closest('.thumb');
+      if (t) { stop(); closeGrid(); return show(+t.dataset.i); }
+      const c = e.target.closest('[data-ch]');
+      if (c) { stop(); return show(S.findIndex((s) => s.chapter === c.dataset.ch)); }
+    });
+    $('prev').onclick = () => { stop(); show(cur - 1); };
+    $('next').onclick = () => { stop(); show(cur + 1); };
+    $('play').onclick = togglePlay;
+    $('gridBtn').onclick = openGrid;
+    $('gridClose').onclick = closeGrid;
+    window.addEventListener('message', (e) => { if (e.data && e.data.driveon === 'next' && e.source === $('carF').contentWindow) { stop(); show(cur + 1); } });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') return closeGrid();
+      if (!$('grid').hidden) return;
+      if (e.key === 'ArrowRight') { stop(); show(cur + 1); }
+      if (e.key === 'ArrowLeft') { stop(); show(cur - 1); }
+      if (e.key === ' ') { e.preventDefault(); togglePlay(); }
+      if (e.key === 'g' || e.key === 'G') openGrid();
+    });
+
+    const fromHash = () => S.findIndex((s) => '#' + s.id === location.hash);
+    window.addEventListener('hashchange', () => { const i = fromHash(); if (i >= 0 && i !== cur) { stop(); show(i); } });
+    show(Math.max(0, fromHash()));
+  </script>
+</body>
+</html>
