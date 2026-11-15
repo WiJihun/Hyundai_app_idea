@@ -51,7 +51,7 @@ export interface HomeData {
 }
 
 function storeCard(s: Store, cur: LatLng, dest: LatLng): StoreCard {
-  const top = s.items.filter((i) => i.popular).concat(s.items.filter((i) => !i.popular)).slice(0, 2);
+  const top = s.items.filter((i) => i.popular).concat(s.items.filter((i) => !i.popular)).slice(0, 3);
   return {
     storeId: s.id,
     name: s.name,

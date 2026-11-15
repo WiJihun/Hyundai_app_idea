@@ -1,7 +1,55 @@
 import { api, connect, esc, hhmm, won, MODE, patch } from '/common/common.js';
+import { initMap, updateMap, setLayer, setFollow, zoomBy, mapState, roadProgress, toRoadKm, nextTurn, arrowSvg, TURN_WORD, fmtDist, LAYER_ORDER, LAYER_NAME, currentRoad, heading, scaleLabel, onMapZoom } from './nav-map.js';
+import { ROAD_KM } from './road-route.js';
 
 const $ = (id) => document.getElementById(id);
 const EMOJI = { 치킨: '🍗', 피자: '🍕', 버거: '🍔', 분식: '🍢', 카페: '☕' };
+const CAT_BG = { 치킨: 'chicken', 피자: 'pizza', 버거: 'burger', 분식: 'snack', 카페: 'cafe' };
+
+/**
+ * 음식 그림: 메뉴 이름으로 그림(이모지)과 맛 표시를 고른다.
+ * 정차 중 한눈에 고를 수 있게 글보다 그림을 먼저 보여 준다.
+ */
+const FOOD = [
+  [/콜라|사이다/, '🥤'], [/감자튀김/, '🍟'], [/치즈볼|치즈크러스트/, '🧀'], [/갈릭|디핑/, '🧄'],
+  [/아메리카노/, '🧋'], [/라떼|커피/, '☕'], [/김밥/, '🍙'], [/순대/, '🌭'], [/튀김/, '🍤'],
+  [/떡볶이/, '🍢'], [/버거/, '🍔'], [/피자|마르게리따|고르곤졸라/, '🍕'], [/치킨/, '🍗'],
+];
+const FLAVOR = [[/청양|고추|양념|로제/, '🌶️'], [/마늘|갈릭/, '🧄'], [/숯불|바베큐/, '🔥'], [/간장/, '🍯'], [/치즈/, '🧀'], [/페퍼로니/, '🥓'], [/불고기/, '🥩'], [/포테이토/, '🥔'], [/베이컨/, '🥓'], [/반반/, '½']];
+function foodEmoji(name, category) {
+  return FOOD.find(([re]) => re.test(name))?.[1] ?? EMOJI[category] ?? '🍽';
+}
+/**
+ * 메뉴 사진 (배경을 지운 그림, vehicle-web/img/menu). 사진이 없는 메뉴는 이모지로 대신한다.
+ * 이름은 정확히 같거나 앞뒤 공백·크기만 다른 경우를 함께 찾는다.
+ */
+const PHOTO = {
+  고추마요치킨: 'chicken-gochu-mayo', 청양마요치킨: 'chicken-cheongyang-mayo', 후라이드치킨: 'chicken-fried', 양념치킨: 'chicken-yangnyeom',
+  반반치킨: 'chicken-banban', 간장치킨: 'chicken-ganjang', 마늘치킨: 'chicken-garlic', 숯불바베큐치킨: 'chicken-bbq',
+  페퍼로니피자: 'pizza-pepperoni', 불고기피자: 'pizza-bulgogi', 포테이토피자: 'pizza-potato', 마르게리따: 'pizza-margherita', 고르곤졸라: 'pizza-gorgonzola',
+  더블치즈버거: 'burger-double-cheese', 베이컨버거: 'burger-bacon',
+  '아이스 아메리카노': 'cafe-iced-americano', 카페라떼: 'cafe-latte',
+  '콜라 1.25L': 'side-cola-large', '사이다 1.25L': 'side-cider-large', '콜라 500ml': 'side-cola-small',
+  치즈볼: 'side-cheese-ball', 감자튀김: 'side-fries', 갈릭디핑소스: 'side-garlic-dip', 치즈크러스트: 'side-cheese-crust',
+};
+/** 메뉴는 없어도 카테고리 대표 사진(떡볶이 = 분식 사진)으로 쓸 수 있는 것 */
+const PHOTO_BY_CAT = { 떡볶이: 'snack' };
+const CAT_PHOTO = { 치킨: 'chicken', 피자: 'pizza', 버거: 'burger', 분식: 'snack', 카페: 'cafe' };
+const catImg = (category) => (CAT_PHOTO[category] ? `img/cat/${CAT_PHOTO[category]}.webp` : null);
+function photoOf(name) {
+  if (PHOTO[name]) return `img/menu/${PHOTO[name]}.webp`;
+  if (PHOTO_BY_CAT[name]) return `img/cat/${PHOTO_BY_CAT[name]}.webp`;
+  return null;
+}
+/** 음식 그림 칸: 사진(없으면 큰 이모지 + 맛 표시) + (담은 개수) */
+function art(name, category, { size = '', qty = 0, flavor = true } = {}) {
+  const src = photoOf(name);
+  const fl = !src && flavor ? FLAVOR.find(([re]) => re.test(name))?.[1] : null;
+  const pic = src
+    ? `<img class="ph" src="${src}" alt="" draggable="false" />`
+    : `<span class="em">${foodEmoji(name, category)}</span>`;
+  return `<span class="art ${CAT_BG[category] ?? ''} ${size} ${src ? 'photo' : ''}" aria-hidden="true">${pic}${fl ? `<span class="fl">${fl}</span>` : ''}${qty ? `<span class="qty">${qty}</span>` : ''}</span>`;
+}
 const STATE_LABEL = { DRIVING: '주행 중', STOPPED: '정차 중', PARKED: '주차', PICKUP: '매장 수령 중' };
 
 /** data-act 속성: 클릭하면 같은 의도로 서버에 보낸다(터치 = 음성과 같은 흐름) */
@@ -22,6 +70,7 @@ function speak(text) {
 function renderTts() {
   $('tts').classList.toggle('off', !ttsOn);
   $('tts').textContent = ttsOn ? '🔊' : '🔇';
+  if (typeof renderMapCtl === 'function' && $('mapCtl').__html) renderMapCtl();
 }
 $('tts').onclick = () => {
   ttsOn = !ttsOn;
@@ -35,6 +84,7 @@ renderTts();
 async function say(text) {
   text = text.trim();
   if (!text) return;
+  showGleo(text, 'user'); // 실제 차량처럼 알아들은 말을 화면 위쪽 말풍선으로 보여 준다
   try {
     reply((await api('/gleo/utterance', { text })).ttsText);
   } catch (e) {
@@ -136,9 +186,10 @@ $('sayForm').onsubmit = (e) => {
 
 /** Gleo 안내를 시스템 알림처럼 잠깐 보여 준다 (소리를 끈 시연에서도 보이게) */
 let gleoToastTimer = 0;
-function showGleo(text) {
+function showGleo(text, who = 'gleo') {
   if (!text) return;
-  $('gleoToast').innerHTML = `<span class="g-dot"></span><span>${esc(text)}</span>`;
+  $('gleoToast').className = `gleo-toast ${who}`;
+  $('gleoToast').innerHTML = `<span class="dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="tx">${who === 'user' ? `“${esc(text)}”` : esc(text)}</span>`;
   $('gleoToast').hidden = false;
   clearTimeout(gleoToastTimer);
   gleoToastTimer = setTimeout(() => ($('gleoToast').hidden = true), 5000);
@@ -163,181 +214,88 @@ function render(st) {
   if (pay.open) drawPay();
 }
 
+// 차량 상태바: 왼쪽 주행 상태 · 가운데 날짜 · 오른쪽 연결 아이콘과 큰 시계 (실제 차량 화면 배치)
+const dateFmt = new Intl.DateTimeFormat('ko-KR', { timeZone: 'Asia/Seoul', month: 'long', day: 'numeric', weekday: 'short' });
+const clock12 = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', hour: 'numeric', minute: '2-digit', hour12: true });
+const ICON_BT = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7l10 10-5 4V3l5 4L7 17"/></svg>';
+const ICON_SIGNAL = '<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor" aria-hidden="true"><rect x="3" y="15" width="3" height="6" rx="1"/><rect x="8.5" y="11" width="3" height="10" rx="1"/><rect x="14" y="7" width="3" height="14" rx="1"/><rect x="19.5" y="3" width="3" height="18" rx="1" opacity=".35"/></svg>';
 function renderStatus(st) {
   const c = st.car;
   const traffic =
-    c.traffic === 'JAM' ? `<span class="traffic JAM">정체 +${c.delayMin}분</span>`
+    c.traffic === 'JAM' ? `<span class="traffic JAM">🚦 정체 +${c.delayMin}분</span>`
     : c.traffic === 'FAST' ? `<span class="traffic FAST">원활 ${c.delayMin}분</span>` : '';
+  const [hm, ap] = clock12.format(st.now).split(' ');
+  const d = dateFmt.formatToParts(st.now);
+  const part = (t) => d.find((p) => p.type === t)?.value ?? '';
   patch($('status'), `
-    <span class="clock">${esc(st.display)}</span>
     <span class="badge ${c.state}">${STATE_LABEL[c.state] ?? c.state}</span>
     <span class="speed">${c.speedKmh} km/h</span>
     ${traffic}
-    <span class="spacer"></span>
     ${st.clock.paused ? '<span class="tag bad">일시정지</span>' : st.clock.speed !== 1 ? `<span class="tag">시연 ${st.clock.speed}배속</span>` : ''}
-    <span class="brand">DriveOn · Pleos Connect</span>`);
+    <span class="date">${part('month')} ${part('day')}일 (${part('weekday')})</span>
+    <span class="sys-ic">${ICON_BT}${ICON_SIGNAL}</span>
+    <span class="clock">${hm}<small>${ap}</small></span>`);
 }
 
-// 지도: 경로·차·집·가게를 단순 평면 투영으로 그린다(지도 타일 없음)
-function distKm(a, b) {
-  const r = (d) => (d * Math.PI) / 180;
-  const h = Math.sin(r(b.lat - a.lat) / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(r(b.lng - a.lng) / 2) ** 2;
-  return 12742 * Math.asin(Math.sqrt(h));
-}
-function sliceRoute(pts, fromKm, toKm) {
-  const out = [];
-  let acc = 0;
-  for (let i = 1; i < pts.length; i++) {
-    const a = pts[i - 1], b = pts[i];
-    const d = distKm(a, b);
-    const lerp = (k) => ({ lat: a.lat + (b.lat - a.lat) * k, lng: a.lng + (b.lng - a.lng) * k });
-    const s = Math.max(fromKm, acc), e = Math.min(toKm, acc + d);
-    if (e > s && d > 0) {
-      if (!out.length) out.push(lerp((s - acc) / d));
-      out.push(lerp((e - acc) / d));
-    }
-    acc += d;
-  }
-  return out;
-}
+// ───────── 내비: 실제 지도 + 왼쪽 세로 버튼 + 아래 안내 바 (실제 차량 내비 배치) ─────────
+const mapReady = initMap($('map'));
+const ICON_SEARCH = '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5 21 21"/></svg>';
+const ICON_LAYER = '<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="m2 13 10 5 10-5" opacity=".6"/></svg>';
 
-
-// ───── 주문 전송 지점 (경로 위 눈금) ─────
-// 서버가 '전송 시각에 차가 있을 경로 위치(km)'를 준다. 운전자가 '들르는 곳'으로 오해하지 않게 핀이 아니라
-// 경로를 가로지르는 얇은 눈금으로 그리고, 시각 대신 '남은 시간'으로 말한다.
-// 평소(주행 중)엔 눈금만 조용히 두고, 결제 직후·전송 시각이 2분 이상 바뀔 때·전송될 때만 6초간 크게 알린다
-// (Gleo 음성 안내와 같은 순간 · 같은 2분 기준).
-function pointAtKm(pts, km) {
-  let acc = 0;
-  for (let i = 1; i < pts.length; i++) {
-    const a = pts[i - 1], b = pts[i];
-    const d = distKm(a, b);
-    if (km <= acc + d && d > 0) {
-      const k = Math.max(0, (km - acc) / d);
-      return { lat: a.lat + (b.lat - a.lat) * k, lng: a.lng + (b.lng - a.lng) * k };
-    }
-    acc += d;
-  }
-  return pts[pts.length - 1];
+function renderMapCtl() {
+  if (!mapReady) return;
+  const { layer, follow } = mapState();
+  const st = lastState;
+  const left = st ? Math.max(0, ROAD_KM - roadProgress(st.car).km) : ROAD_KM;
+  patch($('mapCtl'), `
+    <button data-map="search" aria-label="검색 · Gleo에게 말하기">${ICON_SEARCH}</button>
+    <button data-map="follow" class="compass ${follow ? 'on' : ''}" aria-label="${follow ? '전체 경로 보기' : '내 차 따라가기'}"><small>${follow ? heading() : 'N'}</small><i></i></button>
+    <button data-map="tts" aria-label="안내 음성 켜기/끄기"><small>Nav</small><span class="snd">${ttsOn ? '🔊' : '🔇'}</span></button>
+    <button data-map="layer" aria-label="지도 모드 바꾸기 (지금 ${LAYER_NAME[layer]})">${ICON_LAYER}<small>${LAYER_NAME[layer]}</small></button>
+    <div class="scale"><button data-map="in" aria-label="확대">＋</button><small>Auto<br/>${scaleLabel()}</small><button data-map="out" aria-label="축소">－</button></div>
+    <button data-map="home" aria-label="전체 경로 보기"><span class="hm">🏠</span><small>${left.toFixed(1)} km</small></button>`);
 }
-const SEND_ANIM_MS = 1200;
-const SEND_EVENT_MS = 6000;
-const SEND_SHIFT_MIN = 2; // 서버 SHIFT_ANNOUNCE_MIN 과 같은 기준
-const sendAnim = { id: null, from: 0, to: 0, t0: 0 };
-const sendEvt = { id: null, baseAt: 0, until: 0, delta: 0, sent: false };
-function sendKmNow(t) {
-  const k = Math.min(1, (t - sendAnim.t0) / SEND_ANIM_MS);
-  return sendAnim.from + (sendAnim.to - sendAnim.from) * (1 - (1 - k) ** 3);
-}
-function trackSendPoint(sp, t) {
-  if (sendAnim.id !== sp.orderId) Object.assign(sendAnim, { id: sp.orderId, from: sp.km, to: sp.km, t0: 0 });
-  else if (Math.abs(sp.km - sendAnim.to) > 0.02) Object.assign(sendAnim, { from: sendKmNow(t), to: sp.km, t0: t });
-  // 알릴 순간: 처음 생김(결제 직후) · 전송 시각이 2분 이상 바뀜 · 전송됨
-  if (sendEvt.id !== sp.orderId) Object.assign(sendEvt, { id: sp.orderId, baseAt: sp.at, until: t + SEND_EVENT_MS, delta: 0, sent: sp.sent });
-  else if (sp.sent && !sendEvt.sent) Object.assign(sendEvt, { sent: true, until: t + SEND_EVENT_MS, delta: 0 });
-  else if (!sp.sent && Math.abs(sp.at - sendEvt.baseAt) >= SEND_SHIFT_MIN * 60_000) {
-    Object.assign(sendEvt, { delta: Math.round((sp.at - sendEvt.baseAt) / 60_000), baseAt: sp.at, until: t + SEND_EVENT_MS });
-  }
-  return { km: sendKmNow(t), moving: t - sendAnim.t0 < SEND_ANIM_MS, event: t < sendEvt.until, delta: t < sendEvt.until ? sendEvt.delta : 0 };
-}
-let sendRaf = 0;
+document.addEventListener('driveon:mapview', renderMapCtl);
+window.addEventListener('driveon:redraw', () => lastState && render(lastState));
+document.addEventListener('driveon:storepin', (e) => act({ type: 'SELECT_STORE', storeId: e.detail }));
+$('mapCtl').addEventListener('click', (e) => {
+  const k = e.target.closest('[data-map]')?.dataset.map;
+  if (!k) return;
+  e.stopPropagation();
+  if (k === 'search') return openGleo();
+  if (k === 'layer') setLayer(LAYER_ORDER[(LAYER_ORDER.indexOf(mapState().layer) + 1) % LAYER_ORDER.length]);
+  else if (k === 'follow') setFollow(!mapState().follow);
+  else if (k === 'home') setFollow(false);
+  else if (k === 'tts') $('tts').click();
+  else zoomBy(k === 'in' ? 1 : -1);
+  renderMapCtl();
+  if (lastState) updateMap(lastState);
+});
+onMapZoom(renderMapCtl);
+renderMapCtl();
 
 function renderNav(st) {
   const c = st.car;
-  const restrictedNav = c.uxRestricted;
-  const pts = c.routePoints;
-  const h = st.session.home;
-  const stores = [...h.nearHome, ...h.onTheWay];
-  const all = [...pts, ...stores.map((s) => s.pos)];
-  const minLat = Math.min(...all.map((p) => p.lat)) - 0.006, maxLat = Math.max(...all.map((p) => p.lat)) + 0.006;
-  const minLng = Math.min(...all.map((p) => p.lng)) - 0.008, maxLng = Math.max(...all.map((p) => p.lng)) + 0.008;
-  const kx = Math.cos(((minLat + maxLat) / 2) * (Math.PI / 180));
-  const W = 560, H = 380;
-  const S = Math.min(W / ((maxLng - minLng) * kx), H / (maxLat - minLat));
-  const ox = (W - (maxLng - minLng) * kx * S) / 2, oy = (H - (maxLat - minLat) * S) / 2;
-  const P = (p) => [(p.lng - minLng) * kx * S + ox, (maxLat - p.lat) * S + oy].map((n) => n.toFixed(1)).join(',');
-  const line = (arr) => arr.map(P).join(' ');
-
-  const done = sliceRoute(pts, 0, c.progressKm);
-  const jam = c.traffic === 'JAM' ? sliceRoute(pts, c.progressKm, c.progressKm + 3) : [];
-  const selId = st.session.store?.id;
-  // 호출 화면 카드와 같은 번호를 지도 핀에 찍는다 (Android Place List · CarPlay POI)
-  // 가까운 가게끼리 핀이 겹치면 옆으로 밀고 실제 위치까지 가는 선을 긋는다
-  const placed = [];
-  const storePins = stores.map((s, i) => {
-    const [x0, y0] = P(s.pos).split(',').map(Number);
-    let x = x0;
-    const y = y0;
-    while (placed.some(([px, py]) => Math.hypot(px - x, py - y) < 24)) x += 26;
-    placed.push([x, y]);
-    const sel = s.storeId === selId;
-    return `${x !== x0 ? `<line x1="${x0}" y1="${y0}" x2="${x}" y2="${y}" stroke="#5a6b80" stroke-width="1.5"/>` : ''}
-      <g class="pin ${sel ? 'sel' : ''}"><circle cx="${x}" cy="${y}" r="11"/>
-      <text x="${x}" y="${+y + 4.5}" text-anchor="middle">${i + 1}</text></g>
-      ${sel ? `<text class="pin-label sel" x="${+x + 15}" y="${+y + 4}">${esc(s.name)}</text>` : ''}`;
-  }).join('');
-  const wp = c.waypoint && !c.waypoint.done ? (() => { const [x, y] = P(c.waypoint.pos).split(','); return `<rect class="pin-wp" x="${x - 7}" y="${y - 7}" width="14" height="14" rx="3"/>`; })() : '';
-  // 주문 전송 지점: 경로를 가로지르는 눈금 + (알릴 때만) 남은 시간 라벨
-  const sp = st.sendPoint;
-  let sendSeg = '', sendPin = '', sendEta = '';
-  if (sp) {
-    const t = performance.now();
-    const { km, moving, event, delta } = trackSendPoint(sp, t);
-    if (moving && !sendRaf) sendRaf = requestAnimationFrame(() => { sendRaf = 0; if (lastState) renderNav(lastState); });
-    const xy = (k) => P(pointAtKm(pts, k)).split(',').map(Number);
-    const [px, py] = xy(km);
-    // 눈금 방향: 경로 진행 방향에 수직
-    const [ax, ay] = xy(Math.max(0, km - 0.08)), [bx, by] = xy(km + 0.08);
-    const len = Math.hypot(bx - ax, by - ay) || 1;
-    const nx = -(by - ay) / len, ny = (bx - ax) / len, G = 14;
-    const gate = `${(px - nx * G).toFixed(1)},${(py - ny * G).toFixed(1)} ${(px + nx * G).toFixed(1)},${(py + ny * G).toFixed(1)}`;
-    const seg = !sp.sent && km > c.progressKm ? sliceRoute(pts, c.progressKm, km) : [];
-    if (seg.length > 1) sendSeg = `<polyline class="send-seg ${event ? 'on' : ''}" points="${line(seg)}"/>`;
-
-    const mins = Math.ceil((sp.at - st.now) / 60_000);
-    const text = sp.sent ? '주문 보냄' : mins <= 1 ? '곧 주문' : `${mins}분 뒤 주문`;
-    // 라벨: 알릴 때는 크게, 정차·주차 중엔 작게, 주행 중 평소엔 숨김(눈금만)
-    const size = event ? 'big' : !restrictedNav ? 'small' : null;
-    let tag = '';
-    if (size) {
-      const fs = size === 'big' ? 17 : 13, h = size === 'big' ? 34 : 24;
-      const badge = event && delta ? `${delta > 0 ? '+' : '−'}${Math.abs(delta)}분` : '';
-      const w = text.length * fs * 0.92 + (badge ? badge.length * fs * 0.62 + 18 : 0) + 28;
-      const up = py > h + 30;
-      const ty = up ? py - G - h - 8 : py + G + 8;
-      const tx = Math.max(4, Math.min(W - w - 4, px - w / 2));
-      tag = `<rect class="send-tag ${size}" x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" width="${w.toFixed(1)}" height="${h}" rx="${h / 2}"/>
-        <text class="send-txt ${size}" x="${(tx + 14).toFixed(1)}" y="${(ty + h / 2 + fs * 0.36).toFixed(1)}">${esc(text)}${badge ? `<tspan class="send-delta ${delta > 0 ? 'late' : 'early'}" dx="10">${badge}</tspan>` : ''}</text>`;
-    }
-    sendPin = `<g class="send ${sp.sent ? 'sent' : ''}">
-      <polyline class="send-gate-bg" points="${gate}"/><polyline class="send-gate" points="${gate}"/>${tag}</g>`;
-    if (!sp.sent) sendEta = `<div><span class="lbl">주문 전송</span><b>${esc(text.replace(' 주문', ''))}</b></div>`;
-  }
-  const [hx, hy] = P(pts[pts.length - 1]).split(',');
-  const [sx, sy] = P(pts[0]).split(',');
-  const [cx, cy] = P(c.position).split(',');
-
-  const svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="내비 경로">
-    <rect class="map-bg" width="${W}" height="${H}" rx="10"/>
-    <polyline class="route-all" points="${line(pts)}"/>
-    ${sendSeg}
-    ${done.length > 1 ? `<polyline class="route-done" points="${line(done)}"/>` : ''}
-    ${jam.length > 1 ? `<polyline class="route-all route-jam" points="${line(jam)}"/>` : ''}
-    ${storePins}
-    <circle class="pin-office" cx="${sx}" cy="${sy}" r="5"/><text class="pin-label" x="${+sx + 9}" y="${+sy + 4}">회사</text>
-    <circle class="pin-home" cx="${hx}" cy="${hy}" r="8"/><text class="pin-label" x="${+hx + 11}" y="${+hy + 4}" style="fill:var(--ok)">집</text>
-    ${wp}
-    <circle class="car-dot" cx="${cx}" cy="${cy}" r="9"/>
-    ${sendPin}
-  </svg>`;
-
-  const eta = `<div class="eta">
-      <div><span class="lbl">집 도착</span><span class="big">${hhmm(c.etaDestination)}</span></div>
-      <div><span class="lbl">남은 거리</span><b>${c.remainingKm} km</b></div>
-      ${c.waypoint && !c.waypoint.done ? `<div><span class="lbl">경유 ${esc(c.waypoint.name)}</span><b>${hhmm(c.etaWaypoint)}</b></div>` : ''}
-      ${sendEta}
-    </div>`;
-  patch($('nav'), svg + eta);
+  updateMap(st);
+  const { km } = roadProgress(c);
+  const left = Math.max(0, ROAD_KM - km);
+  const wp = c.waypoint && !c.waypoint.done ? c.waypoint : null;
+  const dp = st.dispatchPoint;
+  const t = c.arrived ? { kind: 'arrive', inKm: 0, road: '' } : nextTurn(km);
+  // 길 안내 카드: 큰 화살표 + 남은 거리 + 길 이름
+  patch($('turn'), `
+    <div class="arrow ${t.kind}">${arrowSvg(t.kind, 58)}</div>
+    <div class="tx"><b>${c.arrived ? '도착' : fmtDist(t.inKm)}</b><span>${esc(t.road || TURN_WORD[t.kind] || '')}</span></div>`);
+  // 아래 안내 바: 지금 달리는 길 (실제 내비의 '▲ 방축로')
+  patch($('road'), `<b>▲</b>${esc(currentRoad(km) || '경로 안내 중')}`);
+  renderMapCtl();
+  // 아래 도착 정보: 그림 + 시각 위주
+  patch($('eta'), `
+    <div class="chip home"><span class="ic">🏠</span><span class="v">${hhmm(c.etaDestination)}</span><small>도착</small></div>
+    <div class="chip"><span class="ic">📍</span><span class="v">${left.toFixed(1)}<small>km</small></span></div>
+    ${dp && !dp.sent ? `<div class="chip send"><span class="ic">📤</span><span class="v">${hhmm(dp.at)}</span><small>${fmtDist(Math.max(0, toRoadKm(dp.routeKm, c) - km))} 앞</small></div>` : ''}
+    ${c.traffic === 'JAM' ? `<div class="chip bad"><span class="ic">🚦</span><span class="v">+${c.delayMin}<small>분</small></span></div>` : ''}
+    ${wp ? `<div class="chip wp"><span class="ic">🚩</span><span class="v">${hhmm(c.etaWaypoint)}</span><small>${esc(shortStore(wp.name))}</small></div>` : ''}`);
 }
 
 /**
@@ -357,10 +315,11 @@ function renderApp(st) {
   // 위 판: Gleo 질문 + 빠른 답
   const lastGleo = [...s.transcript].reverse().find((t) => t.who === 'gleo');
   let quick = '';
-  if (s.suggestRecent) quick = `<button class="ans" ${A({ type: 'CONFIRM' })}>지난번 그대로</button><button ${A({ type: 'DENY' })}>다른 메뉴</button>`;
-  else if (s.phase === 'ASK_UPSELL') quick = `<button class="ans" ${A({ type: 'CONFIRM' })}>음료 추가</button><button ${A({ type: 'DENY' })}>괜찮아요</button>`;
-  else if (s.phase === 'ASK_MODE') quick = `<button class="ans" ${A({ type: 'CHOOSE_MODE', mode: 'DELIVERY' })}>배달</button><button class="ans" ${A({ type: 'CHOOSE_MODE', mode: 'PICKUP' })}>포장</button>`;
-  patch($('question'), !['IDLE', 'ORDERED'].includes(s.phase) && lastGleo ? `<div class="bubble"><b>Gleo</b>${esc(lastGleo.text)}</div>${quick}` : '');
+  const qb = (cls, o, ic, label) => `<button class="${cls}" ${A(o)}><span class="qi">${ic}</span>${label}</button>`;
+  if (s.suggestRecent) quick = qb('ans', { type: 'CONFIRM' }, '↻', '지난번 그대로') + qb('', { type: 'DENY' }, '🔄', '다른 메뉴');
+  else if (s.phase === 'ASK_UPSELL') quick = qb('ans', { type: 'CONFIRM' }, '🥤', '음료 추가') + qb('', { type: 'DENY' }, '🙅', '괜찮아요');
+  else if (s.phase === 'ASK_MODE') quick = qb('ans', { type: 'CHOOSE_MODE', mode: 'DELIVERY' }, '🛵', '배달') + qb('ans', { type: 'CHOOSE_MODE', mode: 'PICKUP' }, '🚗', '포장');
+  patch($('question'), !['IDLE', 'ORDERED'].includes(s.phase) && lastGleo ? `<div class="bubble"><span class="g-dot"></span><span>${esc(lastGleo.text)}</span></div><div class="quick">${quick}</div>` : '');
 
   const showStore = s.store && !s.suggestRecent && listForStore !== s.store.id;
   let body;
@@ -374,18 +333,19 @@ function renderApp(st) {
   // 아래 판
   let bottom;
   if (s.phase === 'ASK_PAY') {
-    bottom = `<button class="text-btn" ${A({ type: 'DENY' })}>메뉴 바꾸기</button>
-      <button class="mint cart-bar" data-ui="pay"><span class="lbl">${won(s.total)} 결제하기</span></button>`;
+    bottom = `<button class="back-btn" ${A({ type: 'DENY' })} aria-label="메뉴 바꾸기">‹<small>메뉴</small></button>
+      <button class="mint cart-bar" data-ui="pay"><span class="cnt">💳</span><span class="lbl">결제하기</span><span class="sum">${won(s.total)}</span></button>`;
   } else if (s.cart.length && s.phase !== 'ORDERED') {
     const count = s.cart.reduce((n, l) => n + l.qty, 0);
     const m = s.mode ?? 'DELIVERY';
     const when = s.preview?.[m]?.display;
     const short = m === 'DELIVERY' && s.store && s.itemsTotal < s.store.minOrder;
-    bottom = `<button class="mint cart-bar" ${A({ type: 'CONFIRM' })}>
-      <span class="cnt">${count}</span>
+    const pics = s.cart.slice(0, 3).map((l) => art(l.name, s.store?.category, { size: 'xs', flavor: false })).join('');
+    bottom = `<button class="mint cart-bar ${short ? 'short' : ''}" ${A({ type: 'CONFIRM' })}>
+      <span class="pics">${pics}<span class="cnt">${count}</span></span>
       <span class="lbl">${short
-        ? `배달 최소주문 ${won(s.store.minOrder)} · ${won(s.store.minOrder - s.itemsTotal)} 더 담아 주세요`
-        : `${MODE[m]} 주문하기${when ? ` <span class="when">· ${when} 매장 전송</span>` : ''}`}</span>
+        ? `🛵 ${won(s.store.minOrder - s.itemsTotal)} 더 담기`
+        : `${m === 'DELIVERY' ? '🛵' : '🚗'} ${MODE[m]} 주문${when ? ` <span class="when">📤 ${when}</span>` : ''}`}</span>
       <span class="sum">${won(s.total)}</span></button>`;
   } else {
     bottom = ''; // 담은 것도 결제할 것도 없으면 아래 판을 비운다
@@ -398,98 +358,113 @@ function storeNumbers(h) {
   return new Map([...h.nearHome, ...h.onTheWay].map((c, i) => [c.storeId, i + 1]));
 }
 
-const rate = (r, n) => `<span class="star">★</span> <b>${r.toFixed(1)}</b> <span style="color:var(--bm-sub)">(${n.toLocaleString('ko-KR')})</span>`;
+const rate = (r) => `<span class="chip-s"><span class="star">★</span>${r.toFixed(1)}</span>`;
 
 function recentCards(h) {
   return h.recent.map((r, i) => `
     <button class="recent-card" ${A({ type: 'REORDER', index: i })}>
-      <span class="nm">${esc(r.items.map((x) => `${x.name}${x.qty > 1 ? ` ×${x.qty}` : ''}`).join(', '))}</span>
-      <span class="st">${esc(r.storeName)} · ${won(r.total)} · ${MODE[r.mode]}</span>
-      <span class="go">한 번에 재주문 ›</span>
+      ${art(r.items[0]?.name ?? '', null, { size: 'md' })}
+      <span class="txt">
+        <span class="nm">${esc(r.items[0]?.name ?? '')}${r.items.length > 1 ? ` +${r.items.length - 1}` : ''}</span>
+        <span class="st">${r.mode === 'DELIVERY' ? '🛵' : '🚗'} ${esc(shortStore(r.storeName))} · ${won(r.total)}</span>
+      </span>
+      <span class="go" aria-label="한 번에 재주문">↻</span>
     </button>`).join('');
 }
 
-// 홈: 말하기 안내 + 카테고리 + 최근 주문
+// 홈: 크게 말하기 버튼 + 그림 카테고리 + 다시 주문
 function homeView(s) {
-  const cats = Object.entries(EMOJI).map(([c, e]) => `<button ${A({ type: 'START', category: c })}><span class="ic">${e}</span><span>${c}</span></button>`).join('');
+  const cats = Object.keys(EMOJI).map((c) => `<button class="cat ${CAT_BG[c]}" ${A({ type: 'START', category: c })}><img class="ic" src="${catImg(c)}" alt="" draggable="false" /><span>${c}</span></button>`).join('');
   const rc = recentCards(s.home);
-  return `<div class="home-search" data-ui="mic">🎙 <span><b>글레오</b>에게 말해 보세요 · “치킨 시켜줘”</span></div>
+  return `<button class="mic-hero" data-ui="mic"><span class="mic">🎙️</span><span class="tx"><b>“치킨 시켜줘”</b><small>Gleo에게 말하기</small></span></button>
     <div class="cat-grid">${cats}</div>
-    ${rc ? `<div class="sec"><div class="sec-title">최근 주문<small>말 한마디로 다시 주문</small></div><div class="recent-row">${rc}</div></div>` : ''}`;
+    ${rc ? `<div class="sec"><div class="sec-title"><span class="h-ic">↻</span>다시 주문</div><div class="recent-row">${rc}</div></div>` : ''}`;
 }
 
-// 가게 목록: 카테고리 탭 + 최근 주문 + 집 근처(배달) + 가는 길(포장)
+/** 가게 카드: 큰 음식 그림 + 번호(지도 핀과 같은 번호) + 아이콘 정보 */
+function storeCard(c, kind, no, sel) {
+  const tops = (c.topItems ?? []).map((t) => t.name).filter(Boolean);
+  const top = tops[0] ?? c.category;
+  const side = tops.slice(1, 3);
+  const extra = kind === 'near'
+    ? c.deliveryTip === 0 ? '<span class="chip-s free">🛵 무료</span>' : `<span class="chip-s">🛵 ${(c.deliveryTip / 1000).toFixed(1).replace('.0', '')}천</span>`
+    : `<span class="chip-s pick">🚗 +${c.detourMin}분</span>`;
+  return `<button class="store-card ${sel ? 'sel' : ''}" ${A({ type: 'SELECT_STORE', storeId: c.storeId })}>
+      <span class="pic ${side.length ? 'trio' : ''}">${art(top, c.category, { size: 'lg' })}${side.length ? `<span class="sub">${side.map((n) => art(n, c.category, { size: 'fill', flavor: false })).join('')}</span>` : ''}<span class="no">${no}</span></span>
+      <span class="nm">${esc(c.name)}</span>
+      <span class="chips">${rate(c.rating)}<span class="chip-s">⏱ ${c.prepMin}분</span>${extra}</span>
+    </button>`;
+}
+
+// 가게 목록: 그림 카테고리 탭 + 다시 주문 + 집 근처(배달) + 가는 길(포장) 카드
 function listView(s) {
   const h = s.home;
   const no = storeNumbers(h);
   const sel = s.store?.id;
-  const tabs = Object.keys(EMOJI).map((c) => `<button class="${s.category === c ? 'on' : ''}" ${A({ type: 'START', category: c })}>${c}</button>`).join('');
-  const row = (c, kind) => `
-    <button class="store-row ${c.storeId === sel ? 'sel' : ''}" ${A({ type: 'SELECT_STORE', storeId: c.storeId })}>
-      <div class="thumb">${EMOJI[c.category] ?? '🍽'}</div>
-      <div class="info">
-        <div class="nm"><span class="no">${no.get(c.storeId)}</span>${esc(c.name)}</div>
-        <div class="l2">${rate(c.rating, c.reviews)} · 조리 ${c.prepMin}분</div>
-        <div class="l3">${kind === 'near'
-          ? `${c.deliveryTip === 0 ? '<span class="badge-free">무료배달</span>' : `배달팁 ${won(c.deliveryTip)}`} · 최소주문 ${won(c.minOrder)} · 집에서 ${c.distanceFromHomeKm}km`
-          : `<span class="badge-pick">포장</span> 가는 길 +${c.detourMin}분 우회 · ${esc(c.topItems[0]?.name ?? '')}`}</div>
-      </div>
-    </button>`;
+  const tabs = Object.keys(EMOJI).map((c) => `<button class="${s.category === c ? 'on' : ''}" ${A({ type: 'START', category: c })}><img class="ti" src="${catImg(c)}" alt="" draggable="false" />${c}</button>`).join('');
+  const grid = (arr, kind) => `<div class="store-grid">${arr.map((c) => storeCard(c, kind, no.get(c.storeId), c.storeId === sel)).join('')}</div>`;
   const rc = recentCards(h);
   return `<div class="cat-tabs">${tabs}</div>
-    ${rc ? `<div class="sec"><div class="sec-title">최근 주문</div><div class="recent-row">${rc}</div></div>` : ''}
-    <div class="sec" style="padding:0"><div class="sec-title" style="padding:16px 18px 0">집 근처 · 배달<small>집에서 2km 안</small></div>
-      ${h.nearHome.map((c) => row(c, 'near')).join('') || '<div class="hint-line">집 근처 가게가 없어요</div>'}</div>
-    <div class="sec" style="padding:0"><div class="sec-title" style="padding:16px 18px 0">가는 길 · 포장<small>5분 이내 우회</small></div>
-      ${h.onTheWay.map((c) => row(c, 'way')).join('') || '<div class="hint-line">가는 길에 들를 가게가 없어요</div>'}</div>`;
+    ${rc ? `<div class="sec"><div class="sec-title"><span class="h-ic">↻</span>다시 주문</div><div class="recent-row">${rc}</div></div>` : ''}
+    <div class="sec"><div class="sec-title"><span class="h-ic">🏠</span>집 근처 배달<small>🛵 2km 안</small></div>
+      ${h.nearHome.length ? grid(h.nearHome, 'near') : '<div class="empty">🏠🚫</div>'}</div>
+    <div class="sec"><div class="sec-title"><span class="h-ic">🚗</span>가는 길 포장<small>🕔 5분 안 우회</small></div>
+      ${h.onTheWay.length ? grid(h.onTheWay, 'way') : '<div class="empty">🚗🚫</div>'}</div>`;
 }
 
-// 가게 화면: 가게 정보 + 배달/포장 탭 + 대표 메뉴(주행 중) / 전체 메뉴(정차 중)
+/** 배달/포장 큰 타일: 그림 + 매장 전송 시각 */
+function modeTiles(s, m, detourMin) {
+  const p = s.preview;
+  const tile = (mode, ic, label, sub) => `<button class="mode-tile ${m === mode ? 'on' : ''}" ${A({ type: 'SET_MODE', mode })}>
+      <span class="mi">${ic}</span><b>${label}</b><span class="sub">${sub}</span></button>`;
+  return `<div class="mode-tiles">
+      ${tile('DELIVERY', '🛵', '배달', p?.DELIVERY ? `📤 <span class="time">${p.DELIVERY.display}</span> → 🏠` : '🏠 도착 맞춤')}
+      ${tile('PICKUP', '🚗', '포장', p?.PICKUP ? `📤 <span class="time">${p.PICKUP.display}</span>${detourMin != null ? ` · +${detourMin}분` : ''}` : `🏪 들르기${detourMin != null ? ` +${detourMin}분` : ''}`)}
+    </div>`;
+}
+
+// 가게 화면: 가게 머리 + 배달/포장 타일 + 메뉴 그림 카드(주행 중 대표 메뉴만)
 function storeView(st) {
   const s = st.session;
   const store = s.store;
   const restricted = st.car.uxRestricted;
   const m = s.mode ?? 'DELIVERY';
-  const p = s.preview;
   const card = [...s.home.nearHome, ...s.home.onTheWay].find((c) => c.storeId === store.id);
+  const no = storeNumbers(s.home).get(store.id);
   const qtyOf = (id) => s.cart.filter((l) => l.itemId === id).reduce((n, l) => n + l.qty, 0);
-  const row = (i) => `
-    <button class="menu-row" ${A({ type: 'ADD_ITEM', itemId: i.id })}>
-      <div class="info">
-        <span class="nm">${i.popular ? '<span class="badge-best">대표</span>' : ''}${esc(i.name)}</span>
-        ${i.desc ? `<span class="ds">${esc(i.desc)}</span>` : ''}
-        <span class="pr">${won(i.price)} ${qtyOf(i.id) ? `<span class="in-cart">· ${qtyOf(i.id)}개 담음</span>` : ''}</span>
-      </div>
-      <div class="thumb">${EMOJI[store.category] ?? '🍽'}</div>
+  const cardOf = (i) => `
+    <button class="menu-card ${qtyOf(i.id) ? 'in' : ''}" ${A({ type: 'ADD_ITEM', itemId: i.id })} aria-label="${esc(i.name)} 담기">
+      ${art(i.name, store.category, { size: 'lg', qty: qtyOf(i.id) })}
+      ${i.popular ? '<span class="best">👑</span>' : ''}
+      <span class="nm">${esc(i.name)}</span>
+      <span class="pr">${won(i.price)}</span>
+      <span class="plus" aria-hidden="true">＋</span>
     </button>`;
   const popular = store.items.filter((i) => i.popular);
   const rest = store.items.filter((i) => !i.popular);
-  const tab = (mode, label, sub) => `<button class="${m === mode ? 'on' : ''}" ${A({ type: 'SET_MODE', mode })}><b>${label}</b><small>${sub}</small></button>`;
+  const shown = s.menuOpen && !restricted ? store.items : popular;
   const opts = s.cart.length && store.options.length
-    ? `<div class="sec"><div class="sec-title">추가 선택<small>마지막에 담은 메뉴에 추가</small></div><div class="opts">${store.options.map((o) => `<button ${A({ type: 'ADD_OPTION', optionIds: [o.id] })}>${esc(o.name)} +${won(o.price)}</button>`).join('')}</div></div>`
+    ? `<div class="sec"><div class="sec-title"><span class="h-ic">➕</span>같이 담기</div><div class="opts">${store.options.map((o) => `<button ${A({ type: 'ADD_OPTION', optionIds: [o.id] })}>${art(o.name, store.category, { size: 'xs', flavor: false })}<span>${esc(o.name)}</span><b>+${won(o.price)}</b></button>`).join('')}</div></div>`
     : '';
   return `<div class="store-head">
-      <div style="text-align:left"><button class="text-btn" data-ui="list" style="text-decoration:none">‹ 가게 목록</button></div>
-      <h2>${esc(store.name)}</h2>
-      <div class="rate">${rate(store.rating, store.reviews)}</div>
-      <div class="facts"><span>최소주문 <b>${won(store.minOrder)}</b></span><span>배달팁 <b>${store.deliveryTip ? won(store.deliveryTip) : '무료'}</b></span><span>조리 약 <b>${Math.max(...store.items.map((i) => i.prepMin))}분</b></span></div>
-      <div class="mode-tabs">
-        ${tab('DELIVERY', '배달', p ? `<span class="time">${p.DELIVERY.display}</span> 전송 · 집 도착 맞춤` : '집 도착에 맞춰 전송')}
-        ${tab('PICKUP', '포장', p?.PICKUP ? `<span class="time">${p.PICKUP.display}</span> 전송 · 매장 경유${card ? ` +${card.detourMin}분` : ''}` : `매장 경유${card ? ` +${card.detourMin}분` : ''} · 배달팁 없음`)}
+      <button class="back-btn" data-ui="list" aria-label="가게 목록">‹</button>
+      ${art(store.items[0]?.name ?? store.category, store.category, { size: 'md' })}
+      <div class="hd">
+        <h2>${no ? `<span class="no">${no}</span>` : ''}${esc(store.name)}</h2>
+        <div class="chips">${rate(store.rating)}<span class="chip-s">⏱ ${Math.max(...store.items.map((i) => i.prepMin))}분</span><span class="chip-s ${store.deliveryTip ? '' : 'free'}">🛵 ${store.deliveryTip ? won(store.deliveryTip) : '무료'}</span><span class="chip-s">🧾 ${won(store.minOrder)}~</span></div>
       </div>
     </div>
-    <div class="sec" style="padding:0"><div class="sec-title" style="padding:16px 18px 4px">대표 메뉴</div>${popular.map(row).join('')}</div>
-    ${rest.length
-      ? s.menuOpen && !restricted
-        ? `<div class="sec" style="padding:0"><div class="sec-title" style="padding:16px 18px 4px">전체 메뉴</div>${rest.map(row).join('')}</div>`
-        : restricted
-          ? '<div class="hint-line">주행 중에는 대표 메뉴만 보여요 · 전체 메뉴는 정차 중에 볼 수 있어요</div>'
-          : `<button class="more" ${A({ type: 'OPEN_MENU' })}>전체 메뉴 ${rest.length}개 보기 ›</button>`
-      : ''}
+    <div class="sec">${modeTiles(s, m, card?.detourMin)}</div>
+    <div class="sec"><div class="menu-grid">${shown.map(cardOf).join('')}</div>
+    ${rest.length && !(s.menuOpen && !restricted)
+      ? restricted
+        ? '<div class="hint-line">🚗 주행 중 · 👑 대표 메뉴만 · 🅿️ 정차하면 전체 메뉴</div>'
+        : `<button class="more" ${A({ type: 'OPEN_MENU' })}>🍽 전체 메뉴 ${rest.length}개 더 보기</button>`
+      : ''}</div>
     ${opts}`;
 }
 
-// 주문하기: 배달/포장 · 도착 맞춤 · 주문 메뉴(수량) · 결제수단 · 결제금액
+// 주문하기: 배달/포장 타일 · 도착 맞춤 그림 타임라인 · 담은 메뉴(그림+수량) · 결제수단 · 결제금액
 function payView(st) {
   const s = st.session;
   const c = st.car;
@@ -497,33 +472,34 @@ function payView(st) {
   const send = s.preview?.[mode]?.display;
   const card = s.cards.find((x) => x.id === s.cardId) ?? s.cards[0];
   const cardIdx = s.cards.indexOf(card);
+  const cat = s.store.category;
   const lines = s.cart.map((l, i) => `
     <div class="line">
-      <div class="nm">${esc(l.name)}${l.options.length ? `<small>+ ${esc(l.options.join(', '))}</small>` : ''}</div>
+      ${art(l.name, cat, { size: 'sm' })}
+      <div class="nm">${esc(l.name)}${l.options.length ? `<span class="opt-pics" title="${esc(l.options.join(', '))}">${l.options.map((n) => `<span class="op">＋${art(n, cat, { size: 'xs', flavor: false })}</span>`).join('')}</span>` : ''}</div>
       <div class="stepper"><button ${A({ type: 'SET_QTY', index: i, qty: l.qty - 1 })} aria-label="빼기">−</button><span>${l.qty}</span><button ${A({ type: 'SET_QTY', index: i, qty: l.qty + 1 })} aria-label="더하기">+</button></div>
       <div class="pr">${won(l.lineTotal)}</div>
     </div>`).join('');
-  const fit = mode === 'DELIVERY'
-    ? `집 도착 <b>${hhmm(c.etaDestination)}</b>에 맞춰 ${send ? `<span class="time">${send}</span>에` : ''} 매장으로 주문을 넣어요.`
-    : `${esc(s.store.name)} 도착 <b>${hhmm(c.etaWaypoint)}</b>에 맞춰 ${send ? `<span class="time">${send}</span>에` : ''} 주문을 넣어요. 매장이 차량번호로 알아봐요.`;
-  return `<div class="order-title">주문하기</div>
-    <div class="sec">
-      <div class="seg">
-        <button class="${mode === 'DELIVERY' ? 'on' : ''}" ${A({ type: 'SET_MODE', mode: 'DELIVERY' })}>배달로 받을게요</button>
-        <button class="${mode === 'PICKUP' ? 'on' : ''}" ${A({ type: 'SET_MODE', mode: 'PICKUP' })}>가는 길에 포장할게요</button>
+  // 도착 맞춤 타임라인: 지금 → 매장 전송 → 조리 → 도착
+  const node = (ic, t, label, cls = '') => `<div class="tl-node ${cls}"><span class="ic">${ic}</span><b>${t}</b><small>${label}</small></div>`;
+  const timeline = `<div class="timeline">
+      ${node('💳', '지금', '결제')}
+      <span class="tl-line"></span>
+      ${node('📤', send ? `<span class="time">${send}</span>` : '–', '매장 전송', 'key')}
+      <span class="tl-line dash"><span>👨‍🍳</span></span>
+      ${mode === 'DELIVERY'
+        ? node('🏠', hhmm(c.etaDestination), '🚗＝🛵 함께 도착')
+        : node('🏪', hhmm(c.etaWaypoint), `${esc(shortStore(s.store.name))} · 🚘 수령`)}
+    </div>`;
+  return `<div class="sec">${modeTiles(s, mode, null)}${timeline}</div>
+    <div class="sec"><div class="sec-title"><span class="h-ic">${EMOJI[cat] ?? '🍽'}</span>${esc(s.store.name)}</div>${lines}</div>
+    <div class="sec pay-sum">
+      <button class="paymethod" data-ui="pay"><span class="mini-card ${cardIdx % 2 ? 'silver' : ''}">${esc(card.issuer)}</span>
+        <span class="pm"><b>··${esc(card.last4)}</b><small>인카페이먼트</small></span><span class="chg">변경 ›</span></button>
+      <div class="sum-col">
+        <div class="sum-row"><span>🍽 ${won(s.itemsTotal)}</span><span>🛵 ${won(s.deliveryTip)}</span></div>
+        <div class="sum-row total"><span>합계</span><span>${won(s.total)}</span></div>
       </div>
-      <div class="fit">${fit}</div>
-    </div>
-    <div class="sec"><div class="sec-title">${esc(s.store.name)}</div>${lines}</div>
-    <div class="sec"><div class="sec-title">결제수단</div>
-      <div class="paymethod"><span class="mini-card ${cardIdx % 2 ? 'silver' : ''}">${esc(card.issuer)}</span>
-        <span><b>인카페이먼트</b><br/><small style="color:var(--bm-sub)">${esc(card.name)} ··${esc(card.last4)} · 일시불</small></span>
-        <button class="chg" data-ui="pay">변경</button></div>
-    </div>
-    <div class="sec"><div class="sec-title">결제금액</div>
-      <div class="sum-row"><span>주문금액</span><span>${won(s.itemsTotal)}</span></div>
-      <div class="sum-row"><span>배달팁</span><span>${won(s.deliveryTip)}</span></div>
-      <div class="sum-row total"><span>총 결제금액</span><span>${won(s.total)}</span></div>
     </div>`;
 }
 
@@ -541,34 +517,40 @@ function progress(o, now) {
 // 주문 현황: 큰 시각 · 4단계 진행(결제 완료 → 전송 대기 → 매장 접수 → 도착) · 주문 정보
 function orderView(st, o, notice) {
   const place = o.mode === 'DELIVERY' ? '집' : '매장';
-  const items = o.lines.map((l) => `${esc(l.name)} ${l.qty}`).join(', ');
-  const pay = o.payment.card ? `${esc(o.payment.card.name)}(${esc(o.payment.card.last4)}) ${esc(o.payment.installment)}` : '인카페이먼트';
-  const info = `<div class="sec"><div class="sec-title">주문 정보</div><div class="kv">
-      <span>가게</span><span>${esc(o.storeName)}</span>
-      <span>메뉴</span><span>${items}</span>
-      <span>받는 방법</span><span>${MODE[o.mode]}${o.vehicle ? ` · 차량 ${esc(o.vehicle.plate)}` : ''}</span>
-      <span>결제</span><span>${pay} · <b>${won(o.total)}</b></span></div></div>`;
+  const cat = lastState?.session.home ? [...lastState.session.home.nearHome, ...lastState.session.home.onTheWay].find((c) => c.storeId === o.storeId)?.category : null;
+  const pay = o.payment.card ? `··${esc(o.payment.card.last4)}` : '';
+  const info = `<div class="sec order-card">
+      <div class="pics">${o.lines.slice(0, 3).map((l) => art(l.name, cat, { size: 'md', qty: l.qty > 1 ? l.qty : 0 })).join('')}</div>
+      <div class="txt">
+        <b>${esc(o.lines.map((l) => l.name).join(', '))}</b>
+        <span>${o.mode === 'DELIVERY' ? '🛵' : '🚗'} ${esc(o.storeName)}${o.vehicle ? ` · 🚘 ${esc(o.vehicle.plate)}` : ''}</span>
+      </div>
+      <div class="amt"><b>${won(o.total)}</b><small>💳 ${pay}</small></div>
+    </div>`;
   // idx: 지금 단계(그 앞은 완료). fill: 단계 점 사이 막대 폭(%) — 점 간격 25%, 전체 75%
   const steps = (idx, fill) => {
-    const storeStep = o.storeStatus === 'DONE' ? '조리 완료' : o.storeStatus === 'ACCEPTED' ? '매장 접수 · 조리 중' : '매장 접수';
+    const storeStep = o.storeStatus === 'DONE' ? '조리 완료' : o.storeStatus === 'ACCEPTED' ? '조리 중' : '매장 접수';
+    const storeIc = o.storeStatus === 'DONE' ? (o.mode === 'DELIVERY' ? '🛵' : '🛍️') : '👨‍🍳';
     const storeTime = o.doneAt ?? o.acceptedAt ?? o.sentAt ?? o.dispatchAt;
-    const labels = [['결제 완료', hhmm(o.createdAt)], ['전송 대기', ''], [storeStep, hhmm(storeTime)], [`${place} 도착`, hhmm(o.pickupEta)]];
+    const labels = [['💳', '결제', hhmm(o.createdAt)], ['📤', '매장 전송', hhmm(o.sentAt ?? o.dispatchAt)], [storeIc, storeStep, hhmm(storeTime)], [o.mode === 'DELIVERY' ? '🏠' : '🏪', `${place} 도착`, hhmm(o.pickupEta)]];
     return `<div class="steps4"><div class="fill" style="width:${Math.min(75, Math.max(0, fill)).toFixed(1)}%"></div>
-      ${labels.map(([l, t], i) => `<div class="st ${i < idx ? 'done' : i === idx ? 'now' : ''}"><span class="dot"></span>${l}${t ? `<small>${t}</small>` : ''}</div>`).join('')}</div>`;
+      ${labels.map(([ic, l, t], i) => `<div class="st ${i < idx ? 'done' : i === idx ? 'now' : ''}"><span class="dot">${ic}</span>${l}${t ? `<small>${t}</small>` : ''}</div>`).join('')}</div>`;
   };
 
   if (o.status === 'SCHEDULED') {
     const sign = o.marginMin >= 0 ? '+' : '−';
     return `<div class="status-head">
         <div class="t1">주문이 예약됐어요</div>
-        <div class="p0"><span class="big">${hhmm(o.dispatchAt)}</span>매장 전송 예정 · ${minutesLeft(o.dispatchAt - st.now)}</div>
-        <div class="place-note">지도 위 눈금은 <b>${place}까지 ${Math.round((o.pickupEta - o.dispatchAt) / 60_000)}분 남은 지점</b>이에요. 그곳을 지날 때 매장으로 보내요.</div>
+        <div class="p0"><span class="hero-ic">📤</span><span class="big">${hhmm(o.dispatchAt)}</span><span class="left-pill">⏳ ${minutesLeft(o.dispatchAt - st.now)}</span></div>
         ${notice ? `<div class="why">${esc(notice.text)}</div>` : ''}
         ${steps(1, 25 + 25 * progress(o, st.now))}
-        <div class="formula">${place} 도착 ${hhmm(o.pickupEta)} ${sign} 여유 ${Math.abs(o.marginMin)}분 − 조리 ${o.prepMin}분${o.mode === 'DELIVERY' ? ` − 배달 ${o.deliveryMin}분` : ''} = <b class="time">${hhmm(o.dispatchAt)}</b> · 내비 시간으로 30초마다 다시 계산</div>
+        <div class="eq" aria-label="${place} 도착 ${hhmm(o.pickupEta)}에서 조리 ${o.prepMin}분${o.mode === 'DELIVERY' ? `, 배달 ${o.deliveryMin}분` : ''}을 빼면 전송 ${hhmm(o.dispatchAt)}">
+          <span class="q">${o.mode === 'DELIVERY' ? '🏠' : '🏪'}<b>${hhmm(o.pickupEta)}</b></span>${o.marginMin ? `<i>${sign}</i><span class="q">⏸<b>${Math.abs(o.marginMin)}′</b></span>` : ''}
+          <i>−</i><span class="q">👨‍🍳<b>${o.prepMin}′</b></span>${o.mode === 'DELIVERY' ? `<i>−</i><span class="q">🛵<b>${o.deliveryMin}′</b></span>` : ''}
+          <i>=</i><span class="q key">📤<b>${hhmm(o.dispatchAt)}</b></span><span class="q auto" title="내비 시간으로 30초마다 다시 계산">🔄</span></div>
       </div>
       ${info}
-      <div class="sec act-row"><button data-ui="collapse">접기</button><button class="cancel" ${A({ type: 'CANCEL' })}>주문 취소 (전송 전 무료)</button></div>`;
+      <div class="sec act-row"><button data-ui="collapse"><span class="ai">🗺️</span>지도 크게</button><button class="cancel" ${A({ type: 'CANCEL' })}><span class="ai">✕</span>취소 (전송 전 무료)</button></div>`;
   }
   if (o.status === 'SENT') {
     const arrived = !!o.customerArrivedAt;
@@ -577,27 +559,30 @@ function orderView(st, o, notice) {
           : o.storeStatus === 'DONE' ? (o.mode === 'DELIVERY' ? '배달을 출발했어요' : '음식이 준비됐어요')
           : o.storeStatus === 'ACCEPTED' ? '매장에서 조리 중이에요'
           : '매장에 주문이 들어갔어요'}</div>
-        <div class="p0 sent"><span class="big">${o.display.sentAt}</span>매장 전송 완료</div>
+        <div class="p0 sent"><span class="hero-ic">${o.mode === 'DELIVERY' ? '🏠' : '🏪'}</span><span class="big">${o.display.pickupEta}</span><span class="left-pill ok">✓ 📤 ${o.display.sentAt}</span></div>
         ${o.lateMin ? `<div class="why">주문할 때 이미 늦어서 바로 보냈어요. 도착 후 약 ${o.lateMin}분 뒤 받을 수 있어요.</div>` : ''}
         ${steps(arrived ? 4 : 3, arrived ? 75 : 50 + 25 * progress(o, st.now))}
-        <div class="formula">${place} 도착 예정 ${o.display.pickupEta} · ${o.mode === 'DELIVERY' ? '음식 도착 예정' : '음식 준비 예정'} ${o.display.readyAt}</div>
+        <div class="eq"><span class="q">🚗<b>${o.display.pickupEta}</b></span><i>·</i><span class="q">${o.mode === 'DELIVERY' ? '🛵' : '🛍️'}<b>${o.display.readyAt}</b></span></div>
       </div>
       ${info}
-      <div class="sec act-row"><button data-ui="collapse">접기</button><button ${A({ type: 'START' })}>새 주문</button></div>`;
+      <div class="sec act-row"><button data-ui="collapse"><span class="ai">🗺️</span>지도 크게</button><button ${A({ type: 'START' })}><span class="ai">➕</span>새 주문</button></div>`;
   }
   return `<div class="status-head"><div class="t1">주문이 취소됐어요</div><div class="formula">결제도 함께 취소됐어요.</div></div>
-    ${info}<div class="sec act-row"><button ${A({ type: 'START' })}>새 주문</button></div>`;
+    ${info}<div class="sec act-row"><button ${A({ type: 'START' })}><span class="ai">➕</span>새 주문</button></div>`;
 }
 
 // 주문 뒤 미니바 (Live Activity): 시각 · 진행 · 메뉴·가게. 누르면 주문 현황
 function liveView(st, o) {
-  const what = `<span class="p1">${esc(shortItem(o.lines[0].name))}${o.lines.length > 1 ? ` 외 ${o.lines.length - 1}` : ''} · ${esc(shortStore(o.storeName))}</span>`;
-  if (o.status === 'SENT') {
-    return `<span class="dot sent"></span><span class="t sent">${o.display.sentAt} 매장으로 전송함</span>
-      <span style="color:var(--bm-sub)">${o.mode === 'DELIVERY' ? '집' : '매장'} 도착 ${o.display.pickupEta}</span><span class="prog" style="visibility:hidden"></span>${what}<span class="open">크게 보기</span>`;
-  }
-  return `<span class="dot"></span><span class="t">${hhmm(o.dispatchAt)} 전송</span><span class="left">${minutesLeft(o.dispatchAt - st.now)}</span>
-    <span class="prog"><i style="width:${(progress(o, st.now) * 100).toFixed(1)}%"></i></span>${what}<span class="open">크게 보기</span>`;
+  // 실제 차량의 미디어 미니 플레이어처럼: 위쪽 진행 막대 · 음식 그림 · 두 줄 · 둥근 버튼
+  const sent = o.status === 'SENT';
+  const pct = sent ? 100 : progress(o, st.now) * 100;
+  const title = sent
+    ? `✓ 📤 ${o.display.sentAt} 전송 · ${o.mode === 'DELIVERY' ? '🏠' : '🏪'} ${o.display.pickupEta}`
+    : `📤 ${hhmm(o.dispatchAt)} 전송 · ⏳ ${minutesLeft(o.dispatchAt - st.now)}`;
+  return `<span class="mp-bar ${sent ? 'sent' : ''}"><i style="width:${pct.toFixed(1)}%"></i></span>
+    ${art(o.lines[0].name, null, { size: 'sm', flavor: false })}
+    <span class="mp-tx"><b>${title}</b><small>${esc(shortItem(o.lines[0].name))}${o.lines.length > 1 ? ` 외 ${o.lines.length - 1}` : ''} · ${esc(shortStore(o.storeName))}</small></span>
+    <span class="mp-btn" aria-hidden="true">⤢</span>`;
 }
 
 // ───────── 인카페이먼트 결제 시트 ─────────

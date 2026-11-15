@@ -75,3 +75,17 @@ test('포장 매장을 경유지로 넣으면 매장 ETA가 생기고 집 ETA는
   assert.equal(car.uxRestricted, false, '매장에서 수령 중에는 정차 상태');
   assert.equal(hhmm(car.etaDestination(now)), '19:44');
 });
+
+test('주문 전송 지점: kmAfter는 실제로 그만큼 달린 위치와 같다 (정체 포함)', () => {
+  const plain = new VirtualCar();
+  const predicted = plain.kmAfter(10 * 60);
+  drive(plain, SCENARIO_START, 10 * MIN);
+  assert.ok(Math.abs(plain.progressKm - predicted) < 0.01);
+
+  const jam = new VirtualCar();
+  jam.addDelay(6);
+  const jamPredicted = jam.kmAfter(10 * 60);
+  assert.ok(jamPredicted < predicted, '정체가 있으면 같은 시간에 덜 간다');
+  drive(jam, SCENARIO_START, 10 * MIN);
+  assert.ok(Math.abs(jam.progressKm - jamPredicted) < 0.01);
+});
