@@ -1,2 +1,5 @@
 * text=auto eol=lf
 *.bat text eol=crlf
+media/**/*.mp4 filter=lfs diff=lfs merge=lfs -text
+*.png binary
+*.jpg binary
