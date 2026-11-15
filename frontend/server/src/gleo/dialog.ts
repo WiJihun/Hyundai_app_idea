@@ -3,7 +3,7 @@ import { computeDispatchAt, prepMinFor } from '../dispatch.ts';
 import { OrderError, orderView, type Order, type OrderService } from '../orders.ts';
 import { buildHome, detourMin, priceOf, type HomeData } from '../recommend.ts';
 import { hhmm } from '../time.ts';
-import { HOME, ITEM_DESC, PAY_CARDS, VEHICLE, findCard, findStore, metaOf, type Category, type Mode, type OrderLineInput, type Store } from '../world.ts';
+import { HOME, ITEM_DESC, PAY_CARDS, VEHICLE, findCard, findStore, metaOf, STORES, type Category, type Mode, type OrderLineInput, type Store } from '../world.ts';
 import { josa, qtyWord, won } from './korean.ts';
 import { RuleBasedNlu, type IntentName, type Nlu, type Parsed } from './nlu.ts';
 
@@ -60,6 +60,8 @@ export interface GleoResult {
   mode?: Mode;
   needsConfirm: boolean;
   ttsText: string;
+  /** 음성 콘솔용: 이번 발화를 NLU가 어떻게 읽었는지 (의도·슬롯 + 사람이 읽는 이름) */
+  nlu?: Parsed & { storeName?: string; itemName?: string; optionNames?: string[] };
 }
 
 export interface DialogDeps {
@@ -144,7 +146,18 @@ export class GleoDialog {
       currentStoreId: this.session.storeId,
       visibleStoreIds: this.visibleStores(home),
     });
-    return this.handle(parsed, home);
+    const r = await this.handle(parsed, home);
+    const store = parsed.storeId ? findStore(parsed.storeId) : undefined;
+    const pool = store ? [...store.items, ...store.options] : STORES.flatMap((x) => [...x.items, ...x.options]);
+    return {
+      ...r,
+      nlu: {
+        ...parsed,
+        storeName: store?.name,
+        itemName: parsed.itemId ? pool.find((i) => i.id === parsed.itemId)?.name : undefined,
+        optionNames: parsed.optionIds?.map((id) => pool.find((i) => i.id === id)?.name ?? id),
+      },
+    };
   }
 
   /** 화면 터치 입력 */

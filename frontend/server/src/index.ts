@@ -21,6 +21,7 @@ const STATIC: Record<string, string> = {
   '/common/': join(ROOT, 'web-common'),
   '/tour/': join(ROOT, 'tour'),
   '/dashboard/': join(ROOT, 'dashboard'),
+  '/voice/': join(ROOT, 'voice-console'),
   '/': join(ROOT, 'stage'),
 };
 const MIME: Record<string, string> = {
