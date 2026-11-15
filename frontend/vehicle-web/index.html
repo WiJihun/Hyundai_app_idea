@@ -36,6 +36,9 @@
         <div class="map" id="map"></div>
         <div class="turn" id="turn"></div>
         <div class="map-ctl" id="mapCtl"></div>
+        <!-- 인카페이먼트 결제: 지도 위에 겹치지 않고 왼쪽 칸을 통째로 쓴다(오른쪽엔 주문 내역이 그대로 보이게).
+             카드 고르기 → 차량·프로필 확인 + 결제 비밀번호(정차) / 음성 승인(주행) -->
+        <div class="pay-scrim" id="paySheet" hidden></div>
         <!-- 아래 안내 바: 시스템 버튼(‹ ⌂ ≡) · 지금 달리는 길 · 도착 정보 -->
         <div class="navbar">
           <span class="sysnav" aria-hidden="true"><i>‹</i><i>⌂</i><i>≡</i></span>
@@ -54,8 +57,6 @@
 
   <!-- Gleo 안내(시스템 알림): 주문 전송·정체·매장 접수 같은 소식을 잠깐 보여 준다 -->
   <div class="gleo-toast" id="gleoToast" hidden></div>
-  <!-- 인카페이먼트 결제 시트: 카드 고르기 → 차량·프로필 확인 + 결제 비밀번호(정차) / 음성 승인(주행) -->
-  <div class="pay-scrim" id="paySheet" hidden></div>
   <!-- 카드사 앱 승인 알림 -->
   <div class="card-toast" id="cardToast" hidden></div>
 

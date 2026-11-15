@@ -723,6 +723,31 @@ body { overflow: hidden; }
 
 .statusbar .tag.pleos { background: rgba(0, 170, 210, 0.18); color: #7fdcf5; border: 1px solid rgba(0, 170, 210, 0.5); }
 
+
+/* 결제 시트: 왼쪽 칸(내비 자리)을 통째로 쓰는 패널. 지도·안내 바보다 위, 오른쪽 주문 내역과 겹치지 않음.
+   왼쪽 열 = 가게·금액·카드(나란히, 겹침 없음), 오른쪽 열 = 확인 항목 + 비밀번호/음성 승인 */
+.nav .pay-scrim { position: absolute; inset: 0; z-index: 1100; display: block; background: var(--pay-sheet); border-radius: 22px; }
+.nav .pay-scrim .pay { width: 100%; height: 100%; max-height: none; border-radius: 22px; padding: 18px 24px 20px; display: grid; gap: 10px 24px; align-content: start;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr); grid-template-areas: 'top top' 'merchant auth' 'amount auth' 'cards auth' 'rest auth'; justify-items: stretch; }
+.nav .pay .grab, .nav .pay .dots { display: none; }
+.nav .pay .top { grid-area: top; padding-bottom: 6px; border-bottom: 1px solid #2c2c32; }
+.nav .pay .top b { font-size: 20px; }
+.nav .pay .merchant { grid-area: merchant; text-align: left; font-size: 17px; }
+.nav .pay .amount { grid-area: amount; text-align: left; font-size: 40px; margin: 0; }
+.nav .pay .cards { grid-area: cards; position: static; height: auto; display: grid; gap: 10px; align-content: start; }
+.nav .pay .cardface { position: relative; top: auto; left: auto; margin: 0; width: 100%; max-width: 340px; height: 132px; padding: 14px 18px; transform: none; opacity: 1;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45); outline: 3px solid transparent; outline-offset: 3px; }
+.nav .pay .cardface.side { transform: none; opacity: 0.55; box-shadow: none; }
+.nav .pay .cardface:not(.side) { outline-color: var(--hy-active, #00aad2); }
+.nav .pay .cardface .issuer { font-size: 18px; }
+.nav .pay .cardface .chip { width: 38px; height: 28px; }
+.nav .pay .cardface .num { font-size: 15px; }
+.nav .pay .auth { grid-area: auth; align-content: start; justify-items: center; gap: 12px; padding-left: 24px; border-left: 1px solid #2c2c32; height: 100%; }
+.nav .pay .checks { grid-template-columns: 1fr; gap: 6px; }
+.nav .pay .checks div { display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; }
+.nav .pay .pinpad { grid-template-columns: repeat(3, minmax(72px, 96px)); }
+.nav .pay .pinpad button { height: 48px; }
+
 @media (max-width: 900px) {
   body { overflow: auto; }
   .cockpit { height: auto; min-height: 100vh; }
