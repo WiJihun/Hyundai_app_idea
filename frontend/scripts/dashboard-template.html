@@ -41,7 +41,7 @@
     /* 가운데 */
     .stage { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 22px; padding: 4px 20px 12px; min-height: 0; align-items: start; }
     .display { min-width: 0; display: grid; gap: 10px; justify-items: center; }
-    .bezel { width: 100%; max-width: calc((100vh - 270px) * 1440 / 860 + 36px); padding: 18px; border-radius: 30px; background: linear-gradient(160deg, #23272d, #08090b 55%, #1a1d22); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
+    .bezel { width: 100%; max-width: calc((100vh - 270px) * 1920 / 720 + 36px); padding: 18px; border-radius: 30px; background: linear-gradient(160deg, #23272d, #08090b 55%, #1a1d22); box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.06); }
     .fit { position: relative; overflow: hidden; border-radius: 14px; background: #000; }
     .fit iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: 0 0; }
     .screen { cursor: pointer; }
@@ -111,7 +111,7 @@
 
   <main class="stage">
     <section class="display">
-      <div class="bezel"><div class="fit screen" id="carFit" data-w="1440" data-h="860"><iframe id="carF" title="차량 화면" tabindex="-1"></iframe></div></div>
+      <div class="bezel"><div class="fit screen" id="carFit" data-w="1920" data-h="720"><iframe id="carF" title="차량 화면" tabindex="-1"></iframe></div></div>
       <div class="hint">화면 속 버튼을 누르거나 ◀ ▶ · 키보드 ← → 로 넘깁니다. 스페이스바는 자동 재생.</div>
     </section>
     <aside class="side">
@@ -146,7 +146,9 @@
     const FONTS = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Asta+Sans:wght@400;600;800&family=Do+Hyeon&family=Jua&family=Noto+Sans+KR:wght@400;500;700;900&family=Noto+Color+Emoji&display=swap"><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">';
     // 캡처 화면 안에서 버튼을 누르면 다음 장면으로 (동작은 하지 않고 넘김만)
     const CLICK = '<script>document.addEventListener("click",function(e){e.preventDefault();e.stopPropagation();parent.postMessage({driveon:"next"},"*")},true);document.addEventListener("submit",function(e){e.preventDefault()},true)<\/script>';
-    const carDoc = (sc, live) => `<!doctype html><html lang="ko"><head><meta charset="utf-8">${FONTS}<style>${DATA.css.theme}\n${DATA.css.car}\nbody{overflow:hidden}</style></head><body>${sc.car}${live ? CLICK : ''}</body></html>`;
+    // 메뉴·카테고리·지도 아이콘 사진(img/...webp)은 파일 안에 넣어 둔 data URI로 바꿔 끼운다 (서버 없이 열어도 보이게)
+    const withImages = (html) => html.replace(/(["'(])img\/([\w\/-]+\.webp)/g, (m, q, k) => q + (DATA.images?.[k] ?? `img/${k}`));
+    const carDoc = (sc, live) => `<!doctype html><html lang="ko"><head><meta charset="utf-8">${FONTS}<style>${DATA.css.theme}\n${DATA.css.car}\nbody{overflow:hidden}</style></head><body>${withImages(sc.car)}${live ? CLICK : ''}</body></html>`;
     const posDoc = (sc) => `<!doctype html><html lang="ko"><head><meta charset="utf-8">${FONTS}<style>${DATA.css.theme}\n${DATA.css.pos}\nbody{overflow:hidden}</style></head><body>${sc.pos}</body></html>`;
 
     // 실제 해상도로 그린 뒤 상자 폭에 맞춰 축소
@@ -162,7 +164,7 @@
 
     function thumb(sc, i, lazy) {
       return `<button class="thumb" data-i="${i}" type="button" aria-label="${i + 1}. ${esc(sc.title)}">
-        <div class="fit" data-w="1440" data-h="860"><iframe ${lazy ? 'loading="lazy"' : ''} tabindex="-1" aria-hidden="true" data-i="${i}"></iframe></div>
+        <div class="fit" data-w="1920" data-h="720"><iframe ${lazy ? 'loading="lazy"' : ''} tabindex="-1" aria-hidden="true" data-i="${i}"></iframe></div>
         <span class="t"><b>${String(i + 1).padStart(2, '0')}</b>${esc(sc.title)}</span></button>`;
     }
     function hydrate(root) {

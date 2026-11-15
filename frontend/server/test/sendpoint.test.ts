@@ -67,3 +67,32 @@ test('전송 지점: 주문이 없거나 취소되면 없음', async () => {
   await app.orders.cancel(o.id);
   assert.equal(app.sendPoint(), null);
 });
+
+test('전송 지점: 전송된 순간 위치에 고정 · 시나리오를 처음으로 돌려 다시 주문해도 이번 위치', async () => {
+  const app = new DriveOnApp();
+  const first = await orderChicken(app);
+  const predicted1 = app.state().dispatchPoint!.routeKm;
+  app.control('skipToSend');
+  app.control('skip', 5); // 화면이 늦게 읽어도(전송 5분 뒤) 깃발은 전송된 자리
+  const km1 = app.state().dispatchPoint!.routeKm;
+  assert.ok(Math.abs(km1 - predicted1) < 0.05, `예측 ${predicted1}km vs 깃발 ${km1}km`);
+  assert.ok(app.car.progressKm - km1 > 0.5, '차는 이미 한참 앞');
+
+  app.control('reset');
+  const second = await orderChicken(app);
+  assert.equal(second.id, first.id, '주문 번호가 다시 ord-0001부터 시작한다');
+  const predicted2 = app.state().dispatchPoint!.routeKm;
+  app.control('skipToSend');
+  const dp = app.state().dispatchPoint!;
+  assert.equal(dp.sent, true);
+  assert.ok(Math.abs(dp.routeKm - predicted2) < 0.05, `예측 ${predicted2}km vs 깃발 ${dp.routeKm}km`);
+});
+
+test('전송까지 건너뛰기: 자동 빨리감기 중이면 전송 뒤 1배속으로 돌아온다', async () => {
+  const app = new DriveOnApp();
+  for (const t of ['글레오, 치킨 시켜줘', '이번엔 청양마요로', '아니', '배달', '응']) await app.dialog.utter(t);
+  assert.ok(app.clock.speed > 1, '결제 뒤 자동 빨리감기');
+  app.control('skipToSend');
+  assert.equal(app.orders.list()[0].status, 'SENT');
+  assert.equal(app.clock.speed, 1);
+});
