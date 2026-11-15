@@ -127,12 +127,39 @@ export function startServer(port = Number(process.env.PORT) || 4173, host = proc
       const b = await body(req);
       if (b.clear) app.setNav(null);
       else {
-        const remainSec = Number(b.remainSec), remainMeters = Number(b.remainMeters);
-        if (!Number.isFinite(remainSec) || remainSec < 0 || !Number.isFinite(remainMeters) || remainMeters < 0) throw new HttpError(400, 'remainSec, remainMeters required');
-        app.setNav({ remainSec, remainKm: remainMeters / 1000, name: typeof b.name === 'string' ? b.name.slice(0, 60) : '' });
+        const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : null);
+        const remainSec = num(b.remainSec), remainMeters = num(b.remainMeters);
+        if (remainSec === null || remainMeters === null) throw new HttpError(400, 'remainSec, remainMeters required');
+        const wpSec = num(b.waypointSec), wpMeters = num(b.waypointMeters);
+        const pos = b.pos && Number.isFinite(b.pos.lat) && Number.isFinite(b.pos.lng)
+          ? { lat: Number(b.pos.lat), lng: Number(b.pos.lng), heading: Number(b.pos.heading) || 0 } : null;
+        const tbt = b.tbt && typeof b.tbt.type === 'string'
+          ? { type: b.tbt.type.slice(0, 40), distance: Number(b.tbt.distance) || 0, description: String(b.tbt.description ?? '').slice(0, 80) } : null;
+        app.setNav({
+          remainSec, remainKm: remainMeters / 1000,
+          waypointSec: wpSec, waypointKm: wpMeters === null ? null : wpMeters / 1000,
+          name: typeof b.name === 'string' ? b.name.slice(0, 60) : '',
+          pos, tbt, address: typeof b.address === 'string' ? b.address.slice(0, 80) : null,
+        });
       }
       broadcast('state', app.state());
       return [200, { source: app.state().car.source }];
+    }],
+    // 차량 앱이 실제 차량 상태를 보낸다: 주행 중 화면 제한(CarUxRestrictions) · 차속 · 기어. {clear:true}면 가상으로
+    ['POST', /^\/car\/vehicle$/, async (_m, req) => {
+      const b = await body(req);
+      if (b.clear) app.setVehicle(null);
+      else app.setVehicle({ speedKmh: Number(b.speedKmh) || 0, restricted: !!b.restricted, gear: typeof b.gear === 'string' ? b.gear.slice(0, 20) : null });
+      broadcast('state', app.state());
+      return [200, { restricted: app.state().car.uxRestricted }];
+    }],
+    // 차량 앱이 실제 내비 이벤트를 보낸다: 경유지(포장 매장) 도착 · 목적지 도착
+    ['POST', /^\/car\/event$/, async (_m, req) => {
+      const { type } = await body(req);
+      if (type !== 'waypointArrived' && type !== 'destinationArrived') throw new HttpError(400, 'type: waypointArrived | destinationArrived');
+      app.navEvent(type);
+      broadcast('state', app.state());
+      return [200, { ok: true }];
     }],
     ['POST', /^\/demo\/control$/, async (_m, req) => {
       const { action, value } = await body(req);

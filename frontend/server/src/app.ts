@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { VirtualCar } from './car.ts';
+import { type NavInfo, VirtualCar } from './car.ts';
 import { SimClock } from './clock.ts';
 import { ETA_REPORT_INTERVAL_MS } from './dispatch.ts';
 import { GleoDialog } from './gleo/dialog.ts';
@@ -245,14 +245,37 @@ export class DriveOnApp {
    * 차량 앱(Pleos NaviHelper)이 보낸 실제 내비 값으로 도착 예정을 바꾼다.
    * 실제 시간으로 흘러야 하므로 자동 빨리감기를 끄고 1배속으로 둔다. null이면 가상 주행으로 돌아간다.
    */
-  setNav(n: { remainSec: number; remainKm: number; name?: string } | null): void {
+  setNav(n: Omit<NavInfo, 'at' | 'name'> & { name?: string } | null): void {
     if (n) {
-      this.car.setNav({ remainSec: n.remainSec, remainKm: n.remainKm, name: n.name ?? '', at: this.clock.now });
+      this.car.setNav({ ...n, name: n.name ?? '', at: this.clock.now });
       this.autoFastForward = false;
       this.fastForwarding = false;
       this.clock.speed = 1;
     } else {
       this.car.setNav(null);
+    }
+    this.reportEtaAll();
+    this.events.emit('changed');
+  }
+
+  /** 실제 차량 상태(주행 중 화면 제한 · 차속 · 기어). 화면 제한이 바뀌면 다음 진행에서 Gleo가 안내한다 */
+  setVehicle(v: { speedKmh: number; restricted: boolean; gear?: string | null } | null): void {
+    this.car.setReal(v ? { speedKmh: Math.max(0, Math.round(v.speedKmh)), restricted: !!v.restricted, gear: v.gear ?? null, at: this.clock.now } : null);
+    this.advance(0);
+    this.events.emit('changed');
+  }
+
+  /** 실제 내비 이벤트: 경유지(포장 매장) 도착 → POS에 '고객 도착', 목적지 도착 */
+  navEvent(type: 'waypointArrived' | 'destinationArrived'): void {
+    const wp = this.car.waypoint;
+    if (type === 'waypointArrived' && wp && !this.car.waypointDone) {
+      this.car.waypointDone = true;
+      const arrived = this.orders.markCustomerArrived(wp.storeId);
+      if (arrived.length) this.say('주문한 매장에 도착했어요. 음식을 받아 가세요.');
+    }
+    if (type === 'destinationArrived') {
+      if (this.car.nav) this.car.setNav({ ...this.car.nav, remainSec: 0, remainKm: 0, at: this.clock.now });
+      this.say('목적지에 도착했어요.');
     }
     this.reportEtaAll();
     this.events.emit('changed');

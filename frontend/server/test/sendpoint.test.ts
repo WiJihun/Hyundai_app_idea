@@ -112,3 +112,29 @@ test('실제 내비 값(/car/nav): 도착 예정이 내비 남은 시간을 따�
   app.setNav(null);
   assert.equal(app.state().car.source, 'sim');
 });
+
+test('실제 차량 상태(/car/vehicle): 주행 중 화면 제한 · 차속이 실제 값을 따른다', async () => {
+  const app = new DriveOnApp();
+  app.control('stop');
+  assert.equal(app.state().car.uxRestricted, false);
+  app.setVehicle({ speedKmh: 42, restricted: true, gear: 'DRIVE' });
+  const c = app.state().car;
+  assert.equal(c.uxRestricted, true);
+  assert.equal(c.speedKmh, 42);
+  assert.equal(c.gear, 'DRIVE');
+  app.setVehicle({ speedKmh: 0, restricted: false, gear: 'PARK' });
+  assert.equal(app.state().car.uxRestricted, false);
+});
+
+test('실제 내비 경유지: 포장 매장까지 남은 시간 · 도착 이벤트로 POS에 고객 도착', async () => {
+  const app = new DriveOnApp();
+  app.autoFastForward = false;
+  for (const t of ['글레오, 치킨 시켜줘', '가는 길에 있는 데로', '숯불바베큐로', '아니', '포장', '응']) await app.dialog.utter(t);
+  const o = app.orders.list()[0];
+  assert.equal(o?.mode, 'PICKUP');
+  assert.ok(app.state().car.waypoint, '경유지 추가됨');
+  app.setNav({ remainSec: 1500, remainKm: 12, waypointSec: 600, waypointKm: 5, name: '집(정자동)' });
+  assert.equal(hhmm(app.state().car.etaWaypoint!), hhmm(app.clock.now + 600_000));
+  app.navEvent('waypointArrived');
+  assert.ok(app.orders.get(o.id).customerArrivedAt, 'POS에 고객 도착');
+});
