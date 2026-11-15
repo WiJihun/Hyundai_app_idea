@@ -175,10 +175,12 @@ export class DriveOnApp {
   /** 조건이 맞을 때까지 가상 시간을 1초씩 빠르게 진행한다 (최대 maxMin분) */
   private fastRun(done: () => boolean, maxMin: number): void {
     const { speed, paused } = this.clock;
+    const wasFast = this.fastForwarding;
     this.clock.speed = 1;
     this.clock.paused = false;
     for (let i = 0; i < maxMin * 60 && !done(); i++) this.advance(1000);
-    this.clock.speed = speed;
+    // 건너뛰는 사이 주문이 전송돼 자동 빨리감기가 끝났으면(order.sent) 1배속을 그대로 둔다
+    this.clock.speed = wasFast && !this.fastForwarding ? 1 : speed;
     this.clock.paused = paused;
   }
 
@@ -326,20 +328,12 @@ export class DriveOnApp {
   /**
    * 내비 지도의 '주문 전송 지점': 매장 전송 시각에 차가 있을 경로 위치.
    * 전송 전에는 남은 시간만큼 차를 앞으로 굴려 계산하므로, 정체가 생기면 핀이 경로를 따라 움직인다.
-   * 전송 뒤에는 실제로 전송된 순간의 위치에 고정한다.
+   * 전송 뒤에는 실제로 전송된 순간의 위치(sentAtKm, 'order.sent' 때 기록 · 시나리오 처음으로 때 비움)에 고정한다.
    */
-  private readonly sentKm = new Map<string, number>();
   private dispatchPoint(o: { id: string; status: string; dispatchAt: number } | null | undefined, now: number) {
     if (!o || o.status === 'CANCELLED') return null;
-    let km: number;
-    let sent = false;
-    if (o.status === 'SENT') {
-      if (!this.sentKm.has(o.id)) this.sentKm.set(o.id, this.car.progressKm);
-      km = this.sentKm.get(o.id)!;
-      sent = true;
-    } else {
-      km = this.car.kmAfter(Math.max(0, o.dispatchAt - now) / 1000);
-    }
+    const sent = o.status === 'SENT';
+    const km = sent ? (this.sentAtKm.get(o.id) ?? this.car.progressKm) : this.car.kmAfter(Math.max(0, o.dispatchAt - now) / 1000);
     return { orderId: o.id, at: o.dispatchAt, routeKm: Math.round(km * 1000) / 1000, pos: this.car.pointAtKm(km), sent };
   }
 

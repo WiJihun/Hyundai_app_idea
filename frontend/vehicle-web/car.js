@@ -467,33 +467,21 @@ function storeView(st) {
 // 주문하기: 배달/포장 타일 · 도착 맞춤 그림 타임라인 · 담은 메뉴(그림+수량) · 결제수단 · 결제금액
 function payView(st) {
   const s = st.session;
-  const c = st.car;
   const mode = s.mode ?? 'DELIVERY';
-  const send = s.preview?.[mode]?.display;
   const card = s.cards.find((x) => x.id === s.cardId) ?? s.cards[0];
   const cardIdx = s.cards.indexOf(card);
   const cat = s.store.category;
   const lines = s.cart.map((l, i) => `
     <div class="line">
-      ${art(l.name, cat, { size: 'sm' })}
-      <div class="nm">${esc(l.name)}${l.options.length ? `<span class="opt-pics" title="${esc(l.options.join(', '))}">${l.options.map((n) => `<span class="op">＋${art(n, cat, { size: 'xs', flavor: false })}</span>`).join('')}</span>` : ''}</div>
+      ${art(l.name, cat, { size: 'md' })}
+      <div class="nm">${esc(l.name)}${l.options.length ? `<span class="opt-pics" title="${esc(l.options.join(', '))}">${l.options.map((n) => `<span class="op">＋${art(n, cat, { size: 'sm', flavor: false })}</span>`).join('')}</span>` : ''}</div>
       <div class="stepper"><button ${A({ type: 'SET_QTY', index: i, qty: l.qty - 1 })} aria-label="빼기">−</button><span>${l.qty}</span><button ${A({ type: 'SET_QTY', index: i, qty: l.qty + 1 })} aria-label="더하기">+</button></div>
       <div class="pr">${won(l.lineTotal)}</div>
     </div>`).join('');
-  // 도착 맞춤 타임라인: 지금 → 매장 전송 → 조리 → 도착
-  const node = (ic, t, label, cls = '') => `<div class="tl-node ${cls}"><span class="ic">${ic}</span><b>${t}</b><small>${label}</small></div>`;
-  const timeline = `<div class="timeline">
-      ${node('💳', '지금', '결제')}
-      <span class="tl-line"></span>
-      ${node('📤', send ? `<span class="time">${send}</span>` : '–', '매장 전송', 'key')}
-      <span class="tl-line dash"><span>👨‍🍳</span></span>
-      ${mode === 'DELIVERY'
-        ? node('🏠', hhmm(c.etaDestination), '🚗＝🛵 함께 도착')
-        : node('🏪', hhmm(c.etaWaypoint), `${esc(shortStore(s.store.name))} · 🚘 수령`)}
-    </div>`;
-  return `<div class="sec">${modeTiles(s, mode, null)}${timeline}</div>
-    <div class="sec"><div class="sec-title"><span class="h-ic">${EMOJI[cat] ?? '🍽'}</span>${esc(s.store.name)}</div>${lines}</div>
-    <div class="sec pay-sum">
+  // 진행 타임라인(지금 → 전송 → 도착)은 결제 뒤 주문 현황에서 보여 준다. 여기서는 메뉴와 금액을 크게.
+  return `<div class="sec">${modeTiles(s, mode, null)}</div>
+    <div class="sec pay-lines"><div class="sec-title"><span class="h-ic">${EMOJI[cat] ?? '🍽'}</span>${esc(s.store.name)}</div>${lines}</div>
+    <div class="sec pay-sum big">
       <button class="paymethod" data-ui="pay"><span class="mini-card ${cardIdx % 2 ? 'silver' : ''}">${esc(card.issuer)}</span>
         <span class="pm"><b>··${esc(card.last4)}</b><small>인카페이먼트</small></span><span class="chg">변경 ›</span></button>
       <div class="sum-col">

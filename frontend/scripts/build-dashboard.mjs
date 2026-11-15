@@ -17,8 +17,21 @@ const themeCss = await readFile(join(ROOT, 'web-common', 'theme.css'), 'utf8');
 const carCss = await readFile(join(ROOT, 'vehicle-web', 'car.css'), 'utf8');
 const posCss = scenes.find((s) => s.posStyle)?.posStyle ?? '';
 
+// 차량 화면이 쓰는 사진(vehicle-web/img/**/*.webp)을 data URI로 넣는다. 장면 HTML이 실제로 쓰는 것만.
+const imgRoot = join(ROOT, 'vehicle-web', 'img');
+const used = new Set(scenes.flatMap((s) => [...String(s.car ?? '').matchAll(/img\/([\w\/-]+\.webp)/g)].map((m) => m[1])));
+const images = {};
+for (const k of used) {
+  try {
+    images[k] = `data:image/webp;base64,${(await readFile(join(imgRoot, k))).toString('base64')}`;
+  } catch {
+    console.warn(`사진 없음: img/${k}`);
+  }
+}
+
 const data = {
   builtAt: new Date().toISOString(),
+  images,
   css: { theme: themeCss, car: carCss, pos: posCss },
   scenes: scenes.map(({ id, chapter, title, desc, tryIt, car, pos }) => ({ id, chapter, title, desc, tryIt, car, pos })),
 };
@@ -28,4 +41,4 @@ const json = JSON.stringify(data).replace(/</g, '\\u003c');
 const template = await readFile(join(ROOT, 'scripts', 'dashboard-template.html'), 'utf8');
 const html = template.replace('/*__DATA__*/null', json);
 await writeFile(join(ROOT, 'dashboard', 'index.html'), html);
-console.log(`dashboard/index.html: 장면 ${scenes.length}개, ${Math.round(html.length / 1024)}KB`);
+console.log(`dashboard/index.html: 장면 ${scenes.length}개, 사진 ${Object.keys(images).length}장, ${Math.round(html.length / 1024)}KB`);
