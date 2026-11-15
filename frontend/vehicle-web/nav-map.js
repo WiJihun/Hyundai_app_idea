@@ -262,9 +262,11 @@ export function updateMap(st) {
   if (!map) return;
   const c = st.car;
   const { km, serverTotal } = roadProgress(c);
-  const pos = roadAt(km);
+  // 실제 내비(Pleos)가 현재 위치·방향을 주면 차 표시는 그 자리에, 아니면 가상 경로 위에
+  const real = c.navPos;
+  const pos = real ? { lat: real.lat, lng: real.lng } : roadAt(km);
   const ahead = roadAt(km + 0.15);
-  const deg = km >= roadTotal - 0.01 ? 0 : bearing(pos, ahead);
+  const deg = real ? real.heading : km >= roadTotal - 0.01 ? 0 : bearing(pos, ahead);
 
   view.route.done.setLatLngs(km > 0.01 ? roadSlice(0, km) : []);
   const jamKm = serverTotal ? (3 / serverTotal) * ROAD_KM : 0;
@@ -308,12 +310,14 @@ export function updateMap(st) {
     map.setView([pos.lat, pos.lng], Math.max(map.getZoom(), 15.5), { animate: true });
   } else {
     // 전체 보기: 경로 + 가게가 다 보이게. 가게 목록이 바뀔 때만 다시 맞춘다
-    const key = stores.map((s) => s.storeId).join(',');
+    const key = stores.map((s) => s.storeId).join(',') + (real ? '|real' : '');
     if (key !== view.fitKey) {
       view.fitKey = key;
       const b = L.latLngBounds(ROAD);
+      if (real) b.extend([real.lat, real.lng]);
       stores.forEach((s) => b.extend([s.pos.lat, s.pos.lng]));
-      map.fitBounds(b, { padding: [40, 40], animate: false });
+      // 왼쪽 버튼 줄·위쪽 길 안내 카드·아래 안내 바에 핀이 가리지 않게 여백을 둔다
+      map.fitBounds(b, { paddingTopLeft: [110, 150], paddingBottomRight: [50, 110], animate: false });
     }
   }
 }

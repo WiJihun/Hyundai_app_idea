@@ -55,11 +55,19 @@ const STATE_LABEL = { DRIVING: '주행 중', STOPPED: '정차 중', PARKED: '주
 /** data-act 속성: 클릭하면 같은 의도로 서버에 보낸다(터치 = 음성과 같은 흐름) */
 const A = (o) => `data-act="${esc(JSON.stringify(o))}"`;
 
+// ───────── Pleos 차량 앱 안에서 실행 중이면 음성·내비를 차량 SDK로 ─────────
+// 차량 앱(vehicle-app)의 WebView가 window.DriveOnNative를 넣어 준다:
+//   listen()/stopListening() = Pleos SpeechToText, speak()/stopSpeaking() = Pleos TextToSpeech,
+//   setWaypoint()/clearWaypoint() = NaviHelper 경유지, openNavi() = Pleos 내비 화면
+const NATIVE = window.DriveOnNative ?? null;
+
 // ───────── 음성 안내(TTS) ─────────
 let ttsOn = true;
 try { ttsOn = localStorage.getItem('driveon.tts') !== '0'; } catch {}
 function speak(text) {
-  if (!ttsOn || !text || !('speechSynthesis' in window)) return;
+  if (!ttsOn || !text) return;
+  if (NATIVE) return NATIVE.speak(text);
+  if (!('speechSynthesis' in window)) return;
   const u = new SpeechSynthesisUtterance(text);
   u.lang = 'ko-KR';
   const v = speechSynthesis.getVoices().find((x) => x.lang && x.lang.startsWith('ko'));
@@ -75,7 +83,7 @@ function renderTts() {
 $('tts').onclick = () => {
   ttsOn = !ttsOn;
   try { localStorage.setItem('driveon.tts', ttsOn ? '1' : '0'); } catch {}
-  if (!ttsOn) speechSynthesis?.cancel();
+  if (!ttsOn) NATIVE ? NATIVE.stopSpeaking() : speechSynthesis?.cancel();
   renderTts();
 };
 renderTts();
@@ -157,7 +165,12 @@ if (SR) {
 function openGleo() {
   $('sayForm').hidden = false;
   $('gleoBtn').setAttribute('aria-expanded', 'true');
-  if (rec) {
+  if (NATIVE) {
+    NATIVE.stopSpeaking();
+    NATIVE.listen();
+    $('gleoBtn').classList.add('listening');
+    $('sayState').textContent = '듣고 있어요 · Pleos 음성 인식';
+  } else if (rec) {
     speechSynthesis?.cancel();
     try {
       rec.start();
@@ -173,8 +186,26 @@ function closeGleo() {
   if ($('sayForm').hidden) return;
   $('sayForm').hidden = true;
   $('gleoBtn').setAttribute('aria-expanded', 'false');
+  if (NATIVE) NATIVE.stopListening();
   try { rec?.stop(); } catch {}
 }
+/** 차량 앱이 Pleos 음성 인식 결과를 넘겨준다: 중간 결과는 말풍선, 최종 결과는 Gleo에게 */
+window.driveonHeard = (text, final) => {
+  if (!text) return;
+  if (!final) {
+    $('sayInput').value = text;
+    showGleo(text, 'user');
+    return;
+  }
+  $('sayInput').value = '';
+  $('gleoBtn').classList.remove('listening');
+  closeGleo();
+  say(text);
+};
+window.driveonListenEnded = (msg) => {
+  $('gleoBtn').classList.remove('listening');
+  $('sayState').textContent = msg || '입력하거나 다시 누르세요';
+};
 $('gleoBtn').onclick = () => ($('sayForm').hidden ? openGleo() : closeGleo());
 $('sayForm').onsubmit = (e) => {
   e.preventDefault();
@@ -190,6 +221,7 @@ function showGleo(text, who = 'gleo') {
   if (!text) return;
   $('gleoToast').className = `gleo-toast ${who}`;
   $('gleoToast').innerHTML = `<span class="dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="tx">${who === 'user' ? `“${esc(text)}”` : esc(text)}</span>`;
+  $('gleoToast').title = text;
   $('gleoToast').hidden = false;
   clearTimeout(gleoToastTimer);
   gleoToastTimer = setTimeout(() => ($('gleoToast').hidden = true), 5000);
@@ -230,6 +262,7 @@ function renderStatus(st) {
   patch($('status'), `
     <span class="badge ${c.state}">${STATE_LABEL[c.state] ?? c.state}</span>
     <span class="speed">${c.speedKmh} km/h</span>
+    ${c.source === 'pleos' ? '<span class="tag pleos" title="Pleos 내비(NaviHelper)의 실제 남은 시간으로 계산 중">📡 Pleos 내비</span>' : ''}
     ${traffic}
     ${st.clock.paused ? '<span class="tag bad">일시정지</span>' : st.clock.speed !== 1 ? `<span class="tag">시연 ${st.clock.speed}배속</span>` : ''}
     <span class="date">${part('month')} ${part('day')}일 (${part('weekday')})</span>
@@ -274,20 +307,43 @@ $('mapCtl').addEventListener('click', (e) => {
 onMapZoom(renderMapCtl);
 renderMapCtl();
 
+/** Pleos TBT 종류 → 화면 화살표 */
+const TBT_KIND = {
+  TURN_LEFT: 'left', TURN_SHARP_L: 'left', TURN_RIGHT: 'right', TURN_SHARP_R: 'right', TURN_KEEP_L: 'keep-left', TURN_KEEP_R: 'keep-right',
+  TURN_EXIT_IC_R: 'exit-right', TURN_EXIT_IC_L: 'keep-left', TURN_EXIT_IC_C: 'start', TURN_ENTER_IC_R: 'merge', TURN_ENTER_IC_L: 'merge', TURN_ENTER_IC_C: 'merge',
+  TURN_UTURN: 'uturn', TURN_ARRIVE: 'arrive', TURN_STRAIGHT: 'start',
+};
+/** 포장 들르기: 서버가 경유지를 정하면 차량 앱에 알려 Pleos 내비 경로에 넣는다 (한 번만) */
+let nativeWp = null;
+function syncNativeNav(c) {
+  if (!NATIVE) return;
+  const wp = c.waypoint && !c.waypoint.done ? c.waypoint : null;
+  const key = wp ? wp.storeId : '';
+  if (key === nativeWp) return;
+  nativeWp = key;
+  if (wp) NATIVE.setWaypoint(wp.pos.lat, wp.pos.lng, wp.name);
+  else NATIVE.clearWaypoint();
+}
+// 길 안내 카드를 누르면 Pleos 내비 화면을 크게 연다
+$('turn').addEventListener('click', () => NATIVE?.openNavi());
+
 function renderNav(st) {
   const c = st.car;
   updateMap(st);
   const { km } = roadProgress(c);
-  const left = Math.max(0, ROAD_KM - km);
+  // 실제 내비 값이 오면 남은 거리도 내비 값을 쓴다
+  const left = c.source === 'pleos' ? c.remainingKm : Math.max(0, ROAD_KM - km);
   const wp = c.waypoint && !c.waypoint.done ? c.waypoint : null;
   const dp = st.dispatchPoint;
-  const t = c.arrived ? { kind: 'arrive', inKm: 0, road: '' } : nextTurn(km);
+  // 실제 내비(Pleos NaviHelper TBT)가 다음 갈림길을 주면 그것을, 아니면 가상 경로의 갈림길을 보여 준다
+  const t = c.arrived ? { kind: 'arrive', inKm: 0, road: '' } : c.tbt ? { kind: TBT_KIND[c.tbt.type] ?? 'start', inKm: c.tbt.distance / 1000, road: c.tbt.description } : nextTurn(km);
+  syncNativeNav(c);
   // 길 안내 카드: 큰 화살표 + 남은 거리 + 길 이름
   patch($('turn'), `
     <div class="arrow ${t.kind}">${arrowSvg(t.kind, 58)}</div>
     <div class="tx"><b>${c.arrived ? '도착' : fmtDist(t.inKm)}</b><span>${esc(t.road || TURN_WORD[t.kind] || '')}</span></div>`);
   // 아래 안내 바: 지금 달리는 길 (실제 내비의 '▲ 방축로')
-  patch($('road'), `<b>▲</b>${esc(currentRoad(km) || '경로 안내 중')}`);
+  patch($('road'), `<b>▲</b>${esc(c.navAddress || currentRoad(km) || '경로 안내 중')}`);
   renderMapCtl();
   // 아래 도착 정보: 그림 + 시각 위주
   patch($('eta'), `
@@ -467,33 +523,21 @@ function storeView(st) {
 // 주문하기: 배달/포장 타일 · 도착 맞춤 그림 타임라인 · 담은 메뉴(그림+수량) · 결제수단 · 결제금액
 function payView(st) {
   const s = st.session;
-  const c = st.car;
   const mode = s.mode ?? 'DELIVERY';
-  const send = s.preview?.[mode]?.display;
   const card = s.cards.find((x) => x.id === s.cardId) ?? s.cards[0];
   const cardIdx = s.cards.indexOf(card);
   const cat = s.store.category;
   const lines = s.cart.map((l, i) => `
     <div class="line">
-      ${art(l.name, cat, { size: 'sm' })}
-      <div class="nm">${esc(l.name)}${l.options.length ? `<span class="opt-pics" title="${esc(l.options.join(', '))}">${l.options.map((n) => `<span class="op">＋${art(n, cat, { size: 'xs', flavor: false })}</span>`).join('')}</span>` : ''}</div>
+      ${art(l.name, cat, { size: 'md' })}
+      <div class="nm">${esc(l.name)}${l.options.length ? `<span class="opt-pics" title="${esc(l.options.join(', '))}">${l.options.map((n) => `<span class="op">＋${art(n, cat, { size: 'sm', flavor: false })}</span>`).join('')}</span>` : ''}</div>
       <div class="stepper"><button ${A({ type: 'SET_QTY', index: i, qty: l.qty - 1 })} aria-label="빼기">−</button><span>${l.qty}</span><button ${A({ type: 'SET_QTY', index: i, qty: l.qty + 1 })} aria-label="더하기">+</button></div>
       <div class="pr">${won(l.lineTotal)}</div>
     </div>`).join('');
-  // 도착 맞춤 타임라인: 지금 → 매장 전송 → 조리 → 도착
-  const node = (ic, t, label, cls = '') => `<div class="tl-node ${cls}"><span class="ic">${ic}</span><b>${t}</b><small>${label}</small></div>`;
-  const timeline = `<div class="timeline">
-      ${node('💳', '지금', '결제')}
-      <span class="tl-line"></span>
-      ${node('📤', send ? `<span class="time">${send}</span>` : '–', '매장 전송', 'key')}
-      <span class="tl-line dash"><span>👨‍🍳</span></span>
-      ${mode === 'DELIVERY'
-        ? node('🏠', hhmm(c.etaDestination), '🚗＝🛵 함께 도착')
-        : node('🏪', hhmm(c.etaWaypoint), `${esc(shortStore(s.store.name))} · 🚘 수령`)}
-    </div>`;
-  return `<div class="sec">${modeTiles(s, mode, null)}${timeline}</div>
-    <div class="sec"><div class="sec-title"><span class="h-ic">${EMOJI[cat] ?? '🍽'}</span>${esc(s.store.name)}</div>${lines}</div>
-    <div class="sec pay-sum">
+  // 진행 타임라인(지금 → 전송 → 도착)은 결제 뒤 주문 현황에서 보여 준다. 여기서는 메뉴와 금액을 크게.
+  return `<div class="sec">${modeTiles(s, mode, null)}</div>
+    <div class="sec pay-lines"><div class="sec-title"><span class="h-ic">${EMOJI[cat] ?? '🍽'}</span>${esc(s.store.name)}</div>${lines}</div>
+    <div class="sec pay-sum big">
       <button class="paymethod" data-ui="pay"><span class="mini-card ${cardIdx % 2 ? 'silver' : ''}">${esc(card.issuer)}</span>
         <span class="pm"><b>··${esc(card.last4)}</b><small>인카페이먼트</small></span><span class="chg">변경 ›</span></button>
       <div class="sum-col">
@@ -628,6 +672,10 @@ function drawPay() {
       <div class="chip"></div>
       <div class="num"><span>•••• •••• •••• ${esc(c.last4)}</span><small>${esc(c.name.replace(c.issuer, '').trim())}</small></div>
     </button>`).join('');
+  // 무엇을 결제하는지: 메뉴 사진 + 이름 × 수량 (결제 완료 뒤에는 주문 내역)
+  const cat = s.store?.category ?? null;
+  const lineSrc = pay.phase === 'done' && s.order ? s.order.lines : s.cart;
+  const lines = (lineSrc ?? []).slice(0, 3).map((l) => `<div class="ln">${art(l.name, cat, { size: 'sm', flavor: false })}<span>${esc(l.name)}</span><small>× ${l.qty}</small></div>`).join('');
   const checks = `<div class="checks">
       <div><span>등록 차량</span><b>${esc(v.plate)} · ${esc(v.model)}</b></div>
       <div><span>운전자 프로필</span><b>${esc(v.profile)}</b></div>
@@ -661,6 +709,7 @@ function drawPay() {
       <div class="top"><b>인카페이먼트</b><span class="mock">모의 결제</span><button class="x" data-pay="close" aria-label="닫기">×</button></div>
       <div class="merchant">${esc(merchant)}</div>
       <div class="amount">${won(amount)}</div>
+      <div class="lines">${lines}</div>
       <div class="cards">${cards}</div>
       <div class="dots">${s.cards.map((_, i) => `<i class="${i === idx ? 'on' : ''}"></i>`).join('')}</div>
       <div class="auth">${auth}</div>

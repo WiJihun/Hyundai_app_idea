@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { VirtualCar } from './car.ts';
+import { type NavInfo, VirtualCar } from './car.ts';
 import { SimClock } from './clock.ts';
 import { ETA_REPORT_INTERVAL_MS } from './dispatch.ts';
 import { GleoDialog } from './gleo/dialog.ts';
@@ -175,10 +175,12 @@ export class DriveOnApp {
   /** 조건이 맞을 때까지 가상 시간을 1초씩 빠르게 진행한다 (최대 maxMin분) */
   private fastRun(done: () => boolean, maxMin: number): void {
     const { speed, paused } = this.clock;
+    const wasFast = this.fastForwarding;
     this.clock.speed = 1;
     this.clock.paused = false;
     for (let i = 0; i < maxMin * 60 && !done(); i++) this.advance(1000);
-    this.clock.speed = speed;
+    // 건너뛰는 사이 주문이 전송돼 자동 빨리감기가 끝났으면(order.sent) 1배속을 그대로 둔다
+    this.clock.speed = wasFast && !this.fastForwarding ? 1 : speed;
     this.clock.paused = paused;
   }
 
@@ -237,6 +239,46 @@ export class DriveOnApp {
       if (o.mode === 'PICKUP' && eta.waypointEta === null) continue; // 이미 매장을 지남
       this.orders.reportEta(o.id, eta);
     }
+  }
+
+  /**
+   * 차량 앱(Pleos NaviHelper)이 보낸 실제 내비 값으로 도착 예정을 바꾼다.
+   * 실제 시간으로 흘러야 하므로 자동 빨리감기를 끄고 1배속으로 둔다. null이면 가상 주행으로 돌아간다.
+   */
+  setNav(n: Omit<NavInfo, 'at' | 'name'> & { name?: string } | null): void {
+    if (n) {
+      this.car.setNav({ ...n, name: n.name ?? '', at: this.clock.now });
+      this.autoFastForward = false;
+      this.fastForwarding = false;
+      this.clock.speed = 1;
+    } else {
+      this.car.setNav(null);
+    }
+    this.reportEtaAll();
+    this.events.emit('changed');
+  }
+
+  /** 실제 차량 상태(주행 중 화면 제한 · 차속 · 기어). 화면 제한이 바뀌면 다음 진행에서 Gleo가 안내한다 */
+  setVehicle(v: { speedKmh: number; restricted: boolean; gear?: string | null } | null): void {
+    this.car.setReal(v ? { speedKmh: Math.max(0, Math.round(v.speedKmh)), restricted: !!v.restricted, gear: v.gear ?? null, at: this.clock.now } : null);
+    this.advance(0);
+    this.events.emit('changed');
+  }
+
+  /** 실제 내비 이벤트: 경유지(포장 매장) 도착 → POS에 '고객 도착', 목적지 도착 */
+  navEvent(type: 'waypointArrived' | 'destinationArrived'): void {
+    const wp = this.car.waypoint;
+    if (type === 'waypointArrived' && wp && !this.car.waypointDone) {
+      this.car.waypointDone = true;
+      const arrived = this.orders.markCustomerArrived(wp.storeId);
+      if (arrived.length) this.say('주문한 매장에 도착했어요. 음식을 받아 가세요.');
+    }
+    if (type === 'destinationArrived') {
+      if (this.car.nav) this.car.setNav({ ...this.car.nav, remainSec: 0, remainKm: 0, at: this.clock.now });
+      this.say('목적지에 도착했어요.');
+    }
+    this.reportEtaAll();
+    this.events.emit('changed');
   }
 
   control(action: DemoAction, value?: number | boolean): void {
@@ -326,21 +368,14 @@ export class DriveOnApp {
   /**
    * 내비 지도의 '주문 전송 지점': 매장 전송 시각에 차가 있을 경로 위치.
    * 전송 전에는 남은 시간만큼 차를 앞으로 굴려 계산하므로, 정체가 생기면 핀이 경로를 따라 움직인다.
-   * 전송 뒤에는 실제로 전송된 순간의 위치에 고정한다.
+   * 전송 뒤에는 실제로 전송된 순간의 위치(sentAtKm, 'order.sent' 때 기록 · 시나리오 처음으로 때 비움)에 고정한다.
    */
-  private readonly sentKm = new Map<string, number>();
-  private dispatchPoint(o: { id: string; status: string; dispatchAt: number } | null | undefined, now: number) {
+  private dispatchPoint(o: { id: string; status: string; dispatchAt: number; sentAt?: number | null } | null | undefined, now: number) {
     if (!o || o.status === 'CANCELLED') return null;
-    let km: number;
-    let sent = false;
-    if (o.status === 'SENT') {
-      if (!this.sentKm.has(o.id)) this.sentKm.set(o.id, this.car.progressKm);
-      km = this.sentKm.get(o.id)!;
-      sent = true;
-    } else {
-      km = this.car.kmAfter(Math.max(0, o.dispatchAt - now) / 1000);
-    }
-    return { orderId: o.id, at: o.dispatchAt, routeKm: Math.round(km * 1000) / 1000, pos: this.car.pointAtKm(km), sent };
+    const sent = o.status === 'SENT';
+    const km = sent ? (this.sentAtKm.get(o.id) ?? this.car.progressKm) : this.car.kmAfter(Math.max(0, o.dispatchAt - now) / 1000);
+    // 깃발 시각: 보내기 전엔 전송 예정, 보낸 뒤엔 실제로 보낸 시각(이미 늦어 바로 보낸 경우 예정보다 늦다)
+    return { orderId: o.id, at: sent ? (o.sentAt ?? o.dispatchAt) : o.dispatchAt, routeKm: Math.round(km * 1000) / 1000, pos: this.car.pointAtKm(km), sent };
   }
 
   state() {

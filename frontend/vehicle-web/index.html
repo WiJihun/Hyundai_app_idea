@@ -19,6 +19,8 @@
     <!-- Pleos 상태바: 주행 상태 · Gleo · 음성 안내 -->
     <header class="statusbar">
       <div class="status" id="status"></div>
+      <!-- Gleo 말풍선: 알아들은 말·Gleo 안내를 상태바 가운데(날짜 자리)에 잠깐 띄운다 → 내비·앱 화면을 가리지 않는다 -->
+      <div class="gleo-toast" id="gleoToast" role="status" aria-live="polite" hidden></div>
       <div class="gleo-ctl">
         <button id="gleoBtn" class="gleo-btn" type="button" aria-label="Gleo에게 말하기" aria-expanded="false"><span class="g-dot"></span>Gleo</button>
         <button id="tts" class="tts" type="button" title="음성 안내 켜기/끄기">🔊</button>
@@ -48,14 +50,13 @@
         <div class="question" id="question"></div>
         <div class="app-body" id="appBody"></div>
         <div class="bottom" id="minibar"></div>
+        <!-- 인카페이먼트 결제: 내비(왼쪽)는 계속 보이게 두고, DriveOn 칸(오른쪽)을 통째로 쓴다.
+             주문 요약 + 카드 고르기 → 차량·프로필 확인 + 결제 비밀번호(정차) / 음성 승인(주행) -->
+        <div class="pay-scrim" id="paySheet" hidden></div>
       </section>
     </main>
   </div>
 
-  <!-- Gleo 안내(시스템 알림): 주문 전송·정체·매장 접수 같은 소식을 잠깐 보여 준다 -->
-  <div class="gleo-toast" id="gleoToast" hidden></div>
-  <!-- 인카페이먼트 결제 시트: 카드 고르기 → 차량·프로필 확인 + 결제 비밀번호(정차) / 음성 승인(주행) -->
-  <div class="pay-scrim" id="paySheet" hidden></div>
   <!-- 카드사 앱 승인 알림 -->
   <div class="card-toast" id="cardToast" hidden></div>
 

@@ -28,6 +28,24 @@ const PICKUP_DWELL_MIN = 1;
 const JAM_FACTOR = 0.5;
 const FAST_FACTOR = 1.25;
 
+/** 차량 앱이 보내는 실제 내비 값 (Pleos NaviHelper) */
+export interface NavInfo {
+  /** 목적지(집)까지 남은 시간(초)·거리(km) */
+  remainSec: number;
+  remainKm: number;
+  /** 첫 경유지(포장 매장)까지 남은 시간(초)·거리(km) */
+  waypointSec?: number | null;
+  waypointKm?: number | null;
+  name: string;
+  /** 현재 위치와 진행 방향(도) */
+  pos?: { lat: number; lng: number; heading: number } | null;
+  /** 다음 갈림길: 종류(TURN_LEFT 등) · 남은 거리(m) · 설명 */
+  tbt?: { type: string; distance: number; description: string } | null;
+  address?: string | null;
+  /** 보고 받은 시각(가상 시계) */
+  at: number;
+}
+
 export class VirtualCar {
   route: Route;
   baseKmh: number;
@@ -46,7 +64,28 @@ export class VirtualCar {
     this.baseKmh = route.totalKm / (BASE_TRIP_MIN / 60);
   }
 
+  /**
+   * 실제 내비(Pleos NaviHelper)가 알려 준 목적지까지 남은 시간·거리.
+   * 있으면 도착 예정은 가상 주행 대신 이 값으로 계산한다(보고 사이에는 시계만큼 줄여 나간다).
+   */
+  nav: NavInfo | null = null;
+
+  setNav(n: NavInfo | null): void {
+    this.nav = n;
+  }
+
+  /**
+   * 실제 차량 상태(Android Automotive 주행 중 화면 제한 · 차속 · 기어). 있으면 가상 주행 대신 이 값을 쓴다.
+   */
+  real: { speedKmh: number; restricted: boolean; gear: string | null; at: number } | null = null;
+
+  setReal(r: { speedKmh: number; restricted: boolean; gear: string | null; at: number } | null): void {
+    this.real = r;
+  }
+
   reset(): void {
+    this.nav = null;
+    this.real = null;
     this.progressKm = 0;
     this.state = 'DRIVING';
     this.delaySec = 0;
@@ -64,12 +103,14 @@ export class VirtualCar {
 
   /** 현재 차속(km/h). 정차·주차·체류 중이면 0 */
   get speedKmh(): number {
+    if (this.real) return this.real.speedKmh;
     if (this.state !== 'DRIVING' || this.arrived || this.dwellSec > 0) return 0;
     return this.baseKmh * this.speedFactor;
   }
 
   /** CarUxRestrictions: 주행 중이면 화면 제한이 켜진다 */
   get uxRestricted(): boolean {
+    if (this.real) return this.real.restricted;
     return this.speedKmh > 0;
   }
 
@@ -85,7 +126,7 @@ export class VirtualCar {
   step(dtMs: number): { reachedWaypoint: boolean; arrived: boolean } {
     let dt = dtMs / 1000;
     const out = { reachedWaypoint: false, arrived: false };
-    if (this.arrived || this.state !== 'DRIVING') return out;
+    if (this.arrived || this.state !== 'DRIVING' || this.nav) return out;
 
     if (this.dwellSec > 0) {
       const used = Math.min(dt, this.dwellSec);
@@ -171,6 +212,7 @@ export class VirtualCar {
 
   /** 최종 목적지(집) 도착 예정 */
   etaDestination(now: number): number {
+    if (this.nav) return toSecond(now + Math.max(0, this.nav.remainSec * 1000 - (now - this.nav.at)));
     if (this.arrived) return now;
     let sec = this.baseSecFor(this.remainingKm) + this.delaySec + this.dwellSec;
     if (this.waypoint && !this.waypointDone) sec += (this.waypoint.detourMin + PICKUP_DWELL_MIN) * 60;
@@ -180,6 +222,7 @@ export class VirtualCar {
   /** 경유지(포장 매장) 도착 예정. 경유지가 없거나 이미 지났으면 null */
   etaWaypoint(now: number): number | null {
     if (!this.waypoint || this.waypointDone) return null;
+    if (this.nav?.waypointSec != null) return toSecond(now + Math.max(0, this.nav.waypointSec * 1000 - (now - this.nav.at)));
     const km = Math.max(0, this.waypoint.routeKm - this.progressKm);
     const sec = this.baseSecFor(km) + this.waypoint.detourMin * 30 + Math.max(0, this.delaySec);
     return toSecond(now + sec * 1000);
@@ -245,8 +288,18 @@ export class VirtualCar {
       destination: { name: HOME.name, lat: HOME.lat, lng: HOME.lng },
       progressKm: round1(this.progressKm),
       totalKm: round1(this.route.totalKm),
-      remainingKm: round1(this.remainingKm),
-      state: this.dwellSec > 0 ? ('PICKUP' as const) : this.state,
+      remainingKm: round1(this.nav ? this.nav.remainKm : this.remainingKm),
+      // 'pleos' = 실제 차량 내비 값(NaviHelper), 'sim' = 가상 주행
+      source: this.nav ? ('pleos' as const) : ('sim' as const),
+      // 실제 내비가 준 현재 위치·방향, 다음 갈림길(TBT), 실제 기어
+      navPos: this.nav?.pos ?? null,
+      tbt: this.nav?.tbt ?? null,
+      navAddress: this.nav?.address ?? null,
+      gear: this.real?.gear ?? null,
+      // 실제 차량 상태가 오면 그 기어·차속으로: P = 주차, 0km/h = 정차
+      state: this.real
+        ? this.real.gear === 'P' ? ('PARKED' as const) : this.real.speedKmh > 0 ? ('DRIVING' as const) : ('STOPPED' as const)
+        : this.dwellSec > 0 ? ('PICKUP' as const) : this.state,
       speedKmh: Math.round(this.speedKmh),
       uxRestricted: this.uxRestricted,
       traffic: this.delaySec > 0.5 ? ('JAM' as const) : this.delaySec < -0.5 ? ('FAST' as const) : ('NORMAL' as const),

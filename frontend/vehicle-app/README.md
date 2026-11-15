@@ -27,3 +27,46 @@ Gleo Interface에 등록할 기능(설계서 4-3):
 
 `schema.json`의 정확한 형식은 Pleos Playground 문서를 확인한 뒤 작성합니다.
 서버 주소는 에뮬레이터에서 `http://10.0.2.2:4173`(서버를 `HOST=0.0.0.0`으로 실행)입니다.
+
+## 지금 들어 있는 것 (3단계: Pleos SDK 전체 연동)
+
+`app/src/main/java/ai/driveon/car/MainActivity.kt` — 화면은 DriveOn 차량 화면(`/car/`)을 WebView로 띄우고, 차량 기능은 SDK로 잇는다.
+
+| 무엇 | SDK | 서버로 / 화면으로 | 에뮬레이터 확인 |
+| --- | --- | --- | --- |
+| 집까지 남은 시간·거리 | NaviHelper `getDestinationInfo` | `POST /car/nav` | ✅ 18분 · 6.7km |
+| 현재 위치·방향·주소 | NaviHelper `getCurrentLocationInfo` | `/car/nav` → 지도 위 차 표시, 아래 바 길 이름 | ✅ 수정구 시흥동 |
+| 다음 갈림길(TBT) | NaviHelper `getTBTInfo` | `/car/nav` → 길 안내 카드 | ✅ 80m 좌회전 · 기업지원허브 방면 |
+| 포장 매장 경유지 추가·삭제 | NaviHelper `addWaypoint` / `removeWaypoint` | 화면 → 앱 (`DriveOnNative.setWaypoint`) | ✅ 길목치킨 판교점 경유 · 33분 · 10km |
+| 경유지까지 남은 시간 | NaviHelper `onDrivingInfo` | `/car/nav` → 매장 도착 예정 | ✅ 14분 |
+| 경유지·목적지 도착 | NaviHelper `onWayPointArrived` / `onDestinationArrived` | `POST /car/event` → POS '고객 도착' | 서버 테스트 (에뮬레이터 내비는 위치 고정) |
+| 길 안내 카드 → 내비 화면 | NaviHelper `requestNavigationScreen(Foreground)` | 화면 → 앱 (`openNavi`) | ✅ |
+| 마이크 음성 인식 | Pleos SpeechToText 3.3.1 | 화면 `driveonHeard` → `/gleo/utterance` | ✅ 온디바이스 인식 시작·녹음 |
+| 안내 음성 | Pleos TextToSpeech 3.3.1 | 화면 → 앱 (`speak`) | ✅ 한국어 온디바이스 재생 |
+| 주행 중 화면 제한 · 차속 · 기어 | Android Automotive `CarUxRestrictionsManager`, `CarPropertyManager` | `POST /car/vehicle` | ✅ D·41km/h·제한 켜짐 → P·0km/h |
+
+### Pleos 서버 음성(HYBRID) 쓰기
+
+`local.properties`(GitHub에 올리지 않는 파일)에 Pleos Playground My Project의 값을 넣는다. 비워 두면 차량 안 온디바이스 엔진으로 동작한다.
+
+```
+pleos.clientId=...
+pleos.clientSecret=...
+```
+
+### 실행
+
+1. PC에서 DriveOn 서버 실행: `frontend`에서 `npm start` (에뮬레이터에서는 `http://10.0.2.2:4173`)
+2. Pleos Connect Emulator(API 34, v2.1.0)를 켠다
+   (공식 안내: https://document.pleos.ai/docs/connect/guide/getting-started/application-development/setup-connect-sdk-emulator)
+3. Android Studio에서 이 폴더(`frontend/vehicle-app`)를 열고 ▶ 실행
+   - 명령어로는: `gradlew assembleDebug` → `adb install -r -g app/build/outputs/apk/debug/app-debug.apk`
+4. 주행 상태 시험: `adb forward tcp:8088 tcp:8088` 후 PC 브라우저에서 `http://127.0.0.1:8088/` (Pleos Virtual Console) → 기어 D + ACCEL
+
+빌드 환경: Gradle 9.9.1 · Android Gradle Plugin 9.5.1 · compileSdk 37 · minSdk 28 · Android Studio 내장 JDK
+
+### 남은 일
+
+- 주행(D·속도>0)하면 Android Automotive가 앱 화면을 막는다 → 주행 중 전용 화면(운전 방해 최적화) + Pleos 앱 심사, 그 전엔 음성으로만
+- Gleo Interface(App Schema)로 "글레오, 치킨 시켜줘"를 Gleo에서 바로 부르기
+- 에뮬레이터 내비는 차 위치가 고정이라 주행하며 남은 시간이 줄어드는 장면과 도착 이벤트는 실차에서 확인

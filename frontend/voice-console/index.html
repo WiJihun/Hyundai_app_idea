@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gleo 음성 주문 콘솔</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Asta+Sans:wght@400;600;800&family=Noto+Sans+KR:wght@400;500;700;900&family=Noto+Color+Emoji&display=swap" />
+  <link rel="stylesheet" href="/common/theme.css" />
+  <link rel="stylesheet" href="voice.css" />
+</head>
+<body>
+  <header class="top">
+    <div class="ttl">
+      <b>Gleo 음성 주문 콘솔</b>
+      <span>말하면 한국어로 알아듣고, 어떻게 이해하고 처리했는지 단계별로 보여 줍니다</span>
+    </div>
+    <div class="top-act">
+      <label class="sw"><input type="checkbox" id="ttsOn" checked /> 🔊 음성 답변</label>
+      <button id="reset" type="button">↺ 시나리오 처음으로</button>
+      <a href="/" class="lnk">시연 무대 ↗</a>
+    </div>
+  </header>
+
+  <main class="grid">
+    <!-- 1. 대화 -->
+    <section class="pane chat">
+      <div class="pane-h"><b>💬 대화</b><span id="conn" class="conn">연결 중…</span></div>
+      <div class="log" id="log" aria-live="polite"></div>
+      <div class="chips" id="chips"></div>
+      <form class="say" id="sayForm">
+        <button type="button" class="mic" id="mic" aria-label="말하기">🎙️</button>
+        <input id="sayInput" type="text" autocomplete="off" placeholder="말하거나 입력하세요 — 예: 글레오, 치킨 시켜줘" />
+        <button type="submit" class="send">보내기</button>
+      </form>
+      <div class="mic-note" id="micNote"></div>
+    </section>
+
+    <!-- 2. 처리 과정 -->
+    <section class="pane flow">
+      <div class="pane-h"><b>⚙️ 처리 과정</b><span class="sub" id="flowSub">말을 하면 여기에 단계가 나타나요</span></div>
+      <ol class="steps" id="steps"></ol>
+    </section>
+
+    <!-- 3. 차량 화면 -->
+    <section class="pane car">
+      <div class="pane-h"><b>🚗 차량 화면</b><span class="sub">같은 서버에 연결된 실시간 화면</span></div>
+      <div class="car-fit" id="carFit"><iframe id="carFrame" src="/car/" title="차량 화면"></iframe></div>
+      <div class="state" id="state"></div>
+    </section>
+  </main>
+
+  <script type="module" src="voice.js"></script>
+</body>
+</html>
