@@ -230,6 +230,7 @@ function renderStatus(st) {
   patch($('status'), `
     <span class="badge ${c.state}">${STATE_LABEL[c.state] ?? c.state}</span>
     <span class="speed">${c.speedKmh} km/h</span>
+    ${c.source === 'pleos' ? '<span class="tag pleos" title="Pleos 내비(NaviHelper)의 실제 남은 시간으로 계산 중">📡 Pleos 내비</span>' : ''}
     ${traffic}
     ${st.clock.paused ? '<span class="tag bad">일시정지</span>' : st.clock.speed !== 1 ? `<span class="tag">시연 ${st.clock.speed}배속</span>` : ''}
     <span class="date">${part('month')} ${part('day')}일 (${part('weekday')})</span>
@@ -278,7 +279,8 @@ function renderNav(st) {
   const c = st.car;
   updateMap(st);
   const { km } = roadProgress(c);
-  const left = Math.max(0, ROAD_KM - km);
+  // 실제 내비 값이 오면 남은 거리도 내비 값을 쓴다
+  const left = c.source === 'pleos' ? c.remainingKm : Math.max(0, ROAD_KM - km);
   const wp = c.waypoint && !c.waypoint.done ? c.waypoint : null;
   const dp = st.dispatchPoint;
   const t = c.arrived ? { kind: 'arrive', inKm: 0, road: '' } : nextTurn(km);

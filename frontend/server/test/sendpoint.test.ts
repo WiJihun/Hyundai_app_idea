@@ -96,3 +96,19 @@ test('전송까지 건너뛰기: 자동 빨리감기 중이면 전송 뒤 1배�
   assert.equal(app.orders.list()[0].status, 'SENT');
   assert.equal(app.clock.speed, 1);
 });
+
+test('실제 내비 값(/car/nav): 도착 예정이 내비 남은 시간을 따르고 빨리감기는 꺼진다', async () => {
+  const app = new DriveOnApp();
+  app.setNav({ remainSec: 18 * 60, remainKm: 6.7, name: '집(정자동)' });
+  const s = app.state();
+  assert.equal(s.car.source, 'pleos');
+  assert.equal(s.car.remainingKm, 6.7);
+  assert.equal(hhmm(s.car.etaDestination), hhmm(app.clock.now + 18 * 60_000));
+  for (const t of ['글레오, 치킨 시켜줘', '이번엔 청양마요로', '아니', '배달', '응']) await app.dialog.utter(t);
+  const o = app.orders.list()[0];
+  assert.equal(app.clock.speed, 1, '실제 시간으로 흐름');
+  // 집까지 18분 < 조리 20분 + 배달 10분 → 이미 늦어서 바로 보냄
+  assert.equal(o.status, 'SENT');
+  app.setNav(null);
+  assert.equal(app.state().car.source, 'sim');
+});

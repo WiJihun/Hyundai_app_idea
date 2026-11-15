@@ -121,6 +121,18 @@ export function startServer(port = Number(process.env.PORT) || 4173, host = proc
       broadcast('state', app.state());
       return [200, r];
     }],
+    // 차량 앱(Pleos NaviHelper)이 실제 내비의 목적지까지 남은 시간(초)·거리(m)를 보낸다. {clear:true}면 가상 주행으로
+    ['POST', /^\/car\/nav$/, async (_m, req) => {
+      const b = await body(req);
+      if (b.clear) app.setNav(null);
+      else {
+        const remainSec = Number(b.remainSec), remainMeters = Number(b.remainMeters);
+        if (!Number.isFinite(remainSec) || remainSec < 0 || !Number.isFinite(remainMeters) || remainMeters < 0) throw new HttpError(400, 'remainSec, remainMeters required');
+        app.setNav({ remainSec, remainKm: remainMeters / 1000, name: typeof b.name === 'string' ? b.name.slice(0, 60) : '' });
+      }
+      broadcast('state', app.state());
+      return [200, { source: app.state().car.source }];
+    }],
     ['POST', /^\/demo\/control$/, async (_m, req) => {
       const { action, value } = await body(req);
       app.control(action as DemoAction, value);

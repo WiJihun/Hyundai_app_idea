@@ -46,7 +46,18 @@ export class VirtualCar {
     this.baseKmh = route.totalKm / (BASE_TRIP_MIN / 60);
   }
 
+  /**
+   * 실제 내비(Pleos NaviHelper)가 알려 준 목적지까지 남은 시간·거리.
+   * 있으면 도착 예정은 가상 주행 대신 이 값으로 계산한다(보고 사이에는 시계만큼 줄여 나간다).
+   */
+  nav: { remainSec: number; remainKm: number; at: number; name: string } | null = null;
+
+  setNav(n: { remainSec: number; remainKm: number; at: number; name: string } | null): void {
+    this.nav = n;
+  }
+
   reset(): void {
+    this.nav = null;
     this.progressKm = 0;
     this.state = 'DRIVING';
     this.delaySec = 0;
@@ -171,6 +182,7 @@ export class VirtualCar {
 
   /** 최종 목적지(집) 도착 예정 */
   etaDestination(now: number): number {
+    if (this.nav) return toSecond(now + Math.max(0, this.nav.remainSec * 1000 - (now - this.nav.at)));
     if (this.arrived) return now;
     let sec = this.baseSecFor(this.remainingKm) + this.delaySec + this.dwellSec;
     if (this.waypoint && !this.waypointDone) sec += (this.waypoint.detourMin + PICKUP_DWELL_MIN) * 60;
@@ -245,7 +257,9 @@ export class VirtualCar {
       destination: { name: HOME.name, lat: HOME.lat, lng: HOME.lng },
       progressKm: round1(this.progressKm),
       totalKm: round1(this.route.totalKm),
-      remainingKm: round1(this.remainingKm),
+      remainingKm: round1(this.nav ? this.nav.remainKm : this.remainingKm),
+      // 'pleos' = 실제 차량 내비 값(NaviHelper), 'sim' = 가상 주행
+      source: this.nav ? ('pleos' as const) : ('sim' as const),
       state: this.dwellSec > 0 ? ('PICKUP' as const) : this.state,
       speedKmh: Math.round(this.speedKmh),
       uxRestricted: this.uxRestricted,

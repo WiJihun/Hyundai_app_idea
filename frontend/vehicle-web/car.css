@@ -721,6 +721,8 @@ body { overflow: hidden; }
 .pay-sum.big .sum-row { font-size: 18px; }
 .pay-sum.big .sum-row.total { font-size: 32px; font-weight: 900; }
 
+.statusbar .tag.pleos { background: rgba(0, 170, 210, 0.18); color: #7fdcf5; border: 1px solid rgba(0, 170, 210, 0.5); }
+
 @media (max-width: 900px) {
   body { overflow: auto; }
   .cockpit { height: auto; min-height: 100vh; }

@@ -241,6 +241,23 @@ export class DriveOnApp {
     }
   }
 
+  /**
+   * 차량 앱(Pleos NaviHelper)이 보낸 실제 내비 값으로 도착 예정을 바꾼다.
+   * 실제 시간으로 흘러야 하므로 자동 빨리감기를 끄고 1배속으로 둔다. null이면 가상 주행으로 돌아간다.
+   */
+  setNav(n: { remainSec: number; remainKm: number; name?: string } | null): void {
+    if (n) {
+      this.car.setNav({ remainSec: n.remainSec, remainKm: n.remainKm, name: n.name ?? '', at: this.clock.now });
+      this.autoFastForward = false;
+      this.fastForwarding = false;
+      this.clock.speed = 1;
+    } else {
+      this.car.setNav(null);
+    }
+    this.reportEtaAll();
+    this.events.emit('changed');
+  }
+
   control(action: DemoAction, value?: number | boolean): void {
     switch (action) {
       case 'reset':
@@ -330,11 +347,12 @@ export class DriveOnApp {
    * 전송 전에는 남은 시간만큼 차를 앞으로 굴려 계산하므로, 정체가 생기면 핀이 경로를 따라 움직인다.
    * 전송 뒤에는 실제로 전송된 순간의 위치(sentAtKm, 'order.sent' 때 기록 · 시나리오 처음으로 때 비움)에 고정한다.
    */
-  private dispatchPoint(o: { id: string; status: string; dispatchAt: number } | null | undefined, now: number) {
+  private dispatchPoint(o: { id: string; status: string; dispatchAt: number; sentAt?: number | null } | null | undefined, now: number) {
     if (!o || o.status === 'CANCELLED') return null;
     const sent = o.status === 'SENT';
     const km = sent ? (this.sentAtKm.get(o.id) ?? this.car.progressKm) : this.car.kmAfter(Math.max(0, o.dispatchAt - now) / 1000);
-    return { orderId: o.id, at: o.dispatchAt, routeKm: Math.round(km * 1000) / 1000, pos: this.car.pointAtKm(km), sent };
+    // 깃발 시각: 보내기 전엔 전송 예정, 보낸 뒤엔 실제로 보낸 시각(이미 늦어 바로 보낸 경우 예정보다 늦다)
+    return { orderId: o.id, at: sent ? (o.sentAt ?? o.dispatchAt) : o.dispatchAt, routeKm: Math.round(km * 1000) / 1000, pos: this.car.pointAtKm(km), sent };
   }
 
   state() {
