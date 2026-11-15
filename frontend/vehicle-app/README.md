@@ -27,3 +27,21 @@ Gleo Interface에 등록할 기능(설계서 4-3):
 
 `schema.json`의 정확한 형식은 Pleos Playground 문서를 확인한 뒤 작성합니다.
 서버 주소는 에뮬레이터에서 `http://10.0.2.2:4173`(서버를 `HOST=0.0.0.0`으로 실행)입니다.
+
+## 지금 들어 있는 것 (1단계: NaviHelper 연동 확인)
+
+`app/src/main/java/ai/driveon/car/MainActivity.kt` — Pleos **NaviHelper SDK 3.0.5**로
+
+- 내비 서비스 연결(`initialize`) → 집(정자동)으로 경로 요청(`requestRoute`)
+- `onDestinationInfo`의 `remainTime`(초)·`remainDistance`(m)로 도착 시각과 **매장 전송 시각(도착 − 조리 − 배달)** 계산
+- `onDrivingInfo`로 목적지·경유지별 남은 시간도 수신 (포장 들르기에 사용 예정)
+
+### 실행
+
+1. Android Studio에 Pleos Connect Emulator(API 34, v2.1.0)를 설치하고 가상 기기를 켠다
+   (공식 안내: https://document.pleos.ai/docs/connect/guide/getting-started/application-development/setup-connect-sdk-emulator)
+2. Android Studio에서 이 폴더(`frontend/vehicle-app`)를 열고 ▶ 실행
+   - 명령어로는: `gradlew assembleDebug` → `adb install -r -g app/build/outputs/apk/debug/app-debug.apk`
+3. 앱의 **🏠 집으로 안내** → Pleos 내비가 안내를 시작하고 앱에 도착·전송 시각이 나온다
+
+빌드 환경: Gradle 9.9.1 · Android Gradle Plugin 9.5.1 · compileSdk 37 · minSdk 28 · Android Studio 내장 JDK
