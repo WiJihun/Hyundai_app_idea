@@ -671,6 +671,10 @@ function drawPay() {
       <div class="chip"></div>
       <div class="num"><span>•••• •••• •••• ${esc(c.last4)}</span><small>${esc(c.name.replace(c.issuer, '').trim())}</small></div>
     </button>`).join('');
+  // 무엇을 결제하는지: 메뉴 사진 + 이름 × 수량 (결제 완료 뒤에는 주문 내역)
+  const cat = s.store?.category ?? null;
+  const lineSrc = pay.phase === 'done' && s.order ? s.order.lines : s.cart;
+  const lines = (lineSrc ?? []).slice(0, 3).map((l) => `<div class="ln">${art(l.name, cat, { size: 'sm', flavor: false })}<span>${esc(l.name)}</span><small>× ${l.qty}</small></div>`).join('');
   const checks = `<div class="checks">
       <div><span>등록 차량</span><b>${esc(v.plate)} · ${esc(v.model)}</b></div>
       <div><span>운전자 프로필</span><b>${esc(v.profile)}</b></div>
@@ -704,6 +708,7 @@ function drawPay() {
       <div class="top"><b>인카페이먼트</b><span class="mock">모의 결제</span><button class="x" data-pay="close" aria-label="닫기">×</button></div>
       <div class="merchant">${esc(merchant)}</div>
       <div class="amount">${won(amount)}</div>
+      <div class="lines">${lines}</div>
       <div class="cards">${cards}</div>
       <div class="dots">${s.cards.map((_, i) => `<i class="${i === idx ? 'on' : ''}"></i>`).join('')}</div>
       <div class="auth">${auth}</div>
