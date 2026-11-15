@@ -770,3 +770,12 @@ body { overflow: hidden; }
   .live { flex-wrap: wrap; border-radius: 16px; }
   .cat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+/* Gleo 말풍선은 상태바 가운데(날짜 자리)에 한 줄로 → 내비 지도·DriveOn 칸을 가리지 않는다 */
+.statusbar .gleo-toast { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 30; display: flex; align-items: center; gap: 10px; max-width: 46%; padding: 0; pointer-events: none; }
+.statusbar .gleo-toast[hidden] { display: none; }
+.statusbar .gleo-toast .tx { min-width: 0; max-width: 100%; padding: 7px 20px; font-size: 18px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: none; }
+.statusbar .gleo-toast .dots i { box-shadow: none; }
+.statusbar:has(.gleo-toast:not([hidden])) .date { visibility: hidden; }
+/* 카드 승인 알림: 상태바(시계·Gleo)를 가리지 않게 오른쪽 아래, 주문 미니바 바로 위에 */
+.card-toast { top: auto; bottom: 104px; right: 28px; }

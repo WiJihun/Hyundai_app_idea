@@ -221,6 +221,7 @@ function showGleo(text, who = 'gleo') {
   if (!text) return;
   $('gleoToast').className = `gleo-toast ${who}`;
   $('gleoToast').innerHTML = `<span class="dots" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span class="tx">${who === 'user' ? `“${esc(text)}”` : esc(text)}</span>`;
+  $('gleoToast').title = text;
   $('gleoToast').hidden = false;
   clearTimeout(gleoToastTimer);
   gleoToastTimer = setTimeout(() => ($('gleoToast').hidden = true), 5000);

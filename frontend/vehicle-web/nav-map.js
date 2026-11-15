@@ -316,7 +316,8 @@ export function updateMap(st) {
       const b = L.latLngBounds(ROAD);
       if (real) b.extend([real.lat, real.lng]);
       stores.forEach((s) => b.extend([s.pos.lat, s.pos.lng]));
-      map.fitBounds(b, { padding: [40, 40], animate: false });
+      // 왼쪽 버튼 줄·위쪽 길 안내 카드·아래 안내 바에 핀이 가리지 않게 여백을 둔다
+      map.fitBounds(b, { paddingTopLeft: [110, 150], paddingBottomRight: [50, 110], animate: false });
     }
   }
 }
