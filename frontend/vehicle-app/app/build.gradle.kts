@@ -24,6 +24,24 @@ android {
         buildConfigField("String", "PLEOS_CLIENT_ID", "\"${local("pleos.clientId")}\"")
         buildConfigField("String", "PLEOS_CLIENT_SECRET", "\"${local("pleos.clientSecret")}\"")
     }
+    // release 서명: local.properties의 release.* 값 (키 파일·비밀번호는 GitHub에 올리지 않는다)
+    signingConfigs {
+        create("release") {
+            val store = local("release.storeFile")
+            if (store.isNotBlank()) {
+                storeFile = rootProject.file(store)
+                storePassword = local("release.storePassword")
+                keyAlias = local("release.keyAlias")
+                keyPassword = local("release.keyPassword")
+            }
+        }
+    }
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
+        }
+    }
     buildFeatures { buildConfig = true }
     // Android Automotive: 주행 중 화면 제한(CarUxRestrictions) · 차속 · 기어(CarPropertyManager)
     useLibrary("android.car")
