@@ -706,6 +706,21 @@ body { overflow: hidden; }
 .app .mint.cart-bar:not(.short) { background: linear-gradient(100deg, var(--hy-blue), var(--bm-mint) 70%); border-color: transparent; box-shadow: 0 4px 14px rgba(0, 170, 210, 0.25); }
 .mk.dispatch .flag { background: linear-gradient(100deg, var(--hy-blue), var(--bm-mint)); }
 
+
+/* 결제 확인 화면: 진행 현황은 결제 뒤로 미루고, 메뉴와 금액을 크게 */
+.pay-lines .sec-title { font-size: 22px; }
+.pay-lines .line { gap: 18px; padding: 14px 0; }
+.pay-lines .line .art.md { width: 120px; height: 120px; border-radius: 20px; }
+.pay-lines .line .nm { font-size: 28px; font-weight: 800; line-height: 1.25; }
+.pay-lines .line .nm .opt-pics { gap: 8px; margin-top: 8px; }
+.pay-lines .line .nm .opt-pics .op { font-size: 16px; }
+.pay-lines .line .pr { font-size: 28px; font-weight: 800; min-width: 150px; }
+.pay-lines .stepper { border-radius: 12px; }
+.app .pay-lines .stepper button { width: 54px; height: 52px; font-size: 26px; }
+.pay-lines .stepper span { width: 44px; font-size: 24px; }
+.pay-sum.big .sum-row { font-size: 18px; }
+.pay-sum.big .sum-row.total { font-size: 32px; font-weight: 900; }
+
 @media (max-width: 900px) {
   body { overflow: auto; }
   .cockpit { height: auto; min-height: 100vh; }
