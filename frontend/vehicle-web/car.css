@@ -6,9 +6,13 @@
  * - 주행 중에는 사진을 숨기고 큰 글씨·대표 메뉴만 (Pleos 주행 제한)
  */
 :root {
-  --bm-mint: #2ac1bc;
-  --bm-mint-press: #1fa9a4;
-  --bm-mint-soft: #e8f8f7;
+  /* 강조색: 현대차 블루 계열 (Hyundai Blue #002C5F · Active Blue #00AAD2).
+     채운 버튼은 흰 글씨가 읽히는 밝은 블루, 남색 바탕 위 글씨·테두리 빛은 Active Blue 쪽 */
+  --hy-blue: #002c5f;
+  --hy-active: #00aad2;
+  --bm-mint: #1a73d9;
+  --bm-mint-press: #1560b8;
+  --bm-mint-soft: #e6f1fc;
   --bm-ink: #1e1e1e;
   --bm-sub: #6f6f6f;
   --bm-faint: #9e9e9e;
@@ -82,9 +86,9 @@ body { overflow: hidden; }
 /* 주문 전송 지점 핀: 경로 위 깃대 + 시각 깃발. 정체로 밀리면 미끄러지듯 움직인다 */
 .mk.dispatch { transition: transform 0.9s ease; }
 .leaflet-zoom-anim .mk.dispatch, .leaflet-dragging .mk.dispatch { transition: none; }
-.mk.dispatch .pole { position: absolute; left: -2px; bottom: 0; width: 4px; height: 34px; border-radius: 2px; background: #fff; box-shadow: 0 0 0 2px #2ac1bc; }
-.mk.dispatch .pole::after { content: ''; position: absolute; left: -5px; bottom: -6px; width: 14px; height: 14px; border-radius: 50%; background: #2ac1bc; border: 3px solid #fff; }
-.mk.dispatch .flag { position: absolute; left: 2px; bottom: 22px; display: flex; align-items: center; gap: 6px; white-space: nowrap; background: #2ac1bc; color: #fff; border-radius: 4px 14px 14px 4px; padding: 5px 12px 5px 8px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45); }
+.mk.dispatch .pole { position: absolute; left: -2px; bottom: 0; width: 4px; height: 34px; border-radius: 2px; background: #fff; box-shadow: 0 0 0 2px var(--bm-mint); }
+.mk.dispatch .pole::after { content: ''; position: absolute; left: -5px; bottom: -6px; width: 14px; height: 14px; border-radius: 50%; background: var(--bm-mint); border: 3px solid #fff; }
+.mk.dispatch .flag { position: absolute; left: 2px; bottom: 22px; display: flex; align-items: center; gap: 6px; white-space: nowrap; background: var(--bm-mint); color: #fff; border-radius: 4px 14px 14px 4px; padding: 5px 12px 5px 8px; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45); }
 .mk.dispatch .flag .ic { font-family: var(--emoji), sans-serif; font-size: 20px; }
 .mk.dispatch .flag b { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .mk.dispatch .flag small { font-size: 13px; font-weight: 700; opacity: 0.95; }
@@ -324,7 +328,7 @@ body { overflow: hidden; }
 .question .qi { font-family: var(--emoji), sans-serif; font-size: 24px; line-height: 1; }
 
 /* 홈: 크게 말하기 + 그림 카테고리 */
-.app .mic-hero { margin: 16px 18px 4px; width: calc(100% - 36px); display: flex; align-items: center; gap: 16px; padding: 14px 18px; border-radius: 20px; border: 0; background: linear-gradient(120deg, #2ac1bc, #1fa9a4); color: #fff; text-align: left; box-shadow: 0 6px 16px rgba(42, 193, 188, 0.35); }
+.app .mic-hero { margin: 16px 18px 4px; width: calc(100% - 36px); display: flex; align-items: center; gap: 16px; padding: 14px 18px; border-radius: 20px; border: 0; background: linear-gradient(120deg, var(--bm-mint), var(--hy-blue)); color: #fff; text-align: left; box-shadow: 0 6px 16px rgba(0, 170, 210, 0.35); }
 .mic-hero .mic { width: 64px; height: 64px; border-radius: 50%; background: rgba(255, 255, 255, 0.22); display: grid; place-items: center; font-family: var(--emoji), sans-serif; font-size: 34px; flex: none; }
 .mic-hero .tx { display: grid; }
 .mic-hero b { font-size: 24px; }
@@ -381,7 +385,7 @@ body { overflow: hidden; }
 .menu-card .best { position: absolute; right: 14px; top: 12px; font-family: var(--emoji), sans-serif; font-size: 24px; }
 .menu-card .nm { font-size: 18px; font-weight: 900; padding: 4px 4px 0; line-height: 1.25; }
 .menu-card .pr { font-size: 17px; font-weight: 700; color: var(--bm-sub); padding: 0 4px; }
-.menu-card .plus { position: absolute; right: 10px; bottom: 10px; width: 40px; height: 40px; border-radius: 50%; background: var(--bm-mint); color: #fff; display: grid; place-items: center; font-size: 26px; font-weight: 900; box-shadow: 0 3px 8px rgba(42, 193, 188, 0.45); }
+.menu-card .plus { position: absolute; right: 10px; bottom: 10px; width: 40px; height: 40px; border-radius: 50%; background: var(--bm-mint); color: #fff; display: grid; place-items: center; font-size: 26px; font-weight: 900; box-shadow: 0 3px 8px rgba(0, 170, 210, 0.45); }
 .app .more { margin-top: 12px; border-radius: 14px !important; border: 1px dashed #cfcfcf !important; font-size: 17px; font-weight: 700; color: var(--bm-ink); }
 .hint-line { font-size: 16px; padding: 12px 4px 0; color: var(--bm-sub); }
 .app .opts button { display: flex; align-items: center; gap: 8px; padding: 6px 14px 6px 6px; font-size: 16px; }
@@ -391,7 +395,7 @@ body { overflow: hidden; }
 .timeline { display: flex; align-items: flex-start; gap: 6px; margin-top: 16px; background: var(--bm-mint-soft); border-radius: 16px; padding: 14px 12px; }
 .tl-node { display: grid; justify-items: center; gap: 2px; text-align: center; min-width: 76px; flex: none; }
 .tl-node .ic { width: 52px; height: 52px; border-radius: 50%; background: var(--bm-white); display: grid; place-items: center; font-family: var(--emoji), sans-serif; font-size: 28px; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08); }
-.tl-node.key .ic { background: var(--bm-mint); box-shadow: 0 0 0 4px rgba(42, 193, 188, 0.3); }
+.tl-node.key .ic { background: var(--bm-mint); box-shadow: 0 0 0 4px rgba(0, 170, 210, 0.3); }
 .tl-node b { font-size: 20px; font-variant-numeric: tabular-nums; }
 .tl-node small { font-size: 13px; color: var(--bm-sub); max-width: 130px; }
 .tl-line { flex: 1; height: 4px; background: var(--bm-mint); border-radius: 2px; margin-top: 24px; position: relative; min-width: 24px; }
@@ -416,7 +420,7 @@ body { overflow: hidden; }
 .steps4 .st { font-size: 15px; }
 .steps4 .dot { width: 52px; height: 52px; border-width: 3px; display: grid; place-items: center; font-family: var(--emoji), sans-serif; font-size: 26px; filter: grayscale(1); opacity: 0.55; }
 .steps4 .st.done .dot { background: var(--bm-white); border-color: var(--bm-mint); filter: none; opacity: 1; }
-.steps4 .st.now .dot { background: var(--bm-mint-soft); border-color: var(--bm-mint); filter: none; opacity: 1; box-shadow: 0 0 0 5px rgba(42, 193, 188, 0.25); }
+.steps4 .st.now .dot { background: var(--bm-mint-soft); border-color: var(--bm-mint); filter: none; opacity: 1; box-shadow: 0 0 0 5px rgba(0, 170, 210, 0.25); }
 .order-card { display: flex; align-items: center; gap: 14px; }
 .order-card .pics { display: flex; gap: 6px; }
 .order-card .txt { flex: 1; min-width: 0; display: grid; gap: 3px; }
@@ -613,7 +617,7 @@ body { overflow: hidden; }
 /* DriveOn 앱 창: 차량 위젯과 같은 남색 테마 (민트는 DriveOn 강조색으로만) */
 .app {
   --bm-gray: #111927; --bm-white: var(--cc-panel); --bm-ink: #eef2f8; --bm-sub: var(--cc-sub); --bm-faint: #727e93; --bm-line: var(--cc-line);
-  --bm-mint-soft: rgba(42, 193, 188, 0.16); --bm-mint-press: #3fd3ce;
+  --bm-mint-soft: rgba(0, 170, 210, 0.16); --bm-mint-press: #5ccbec;
   --f-bm-title: var(--font); --f-bm-body: var(--font); --f-bm-badge: var(--font);
   border-radius: 22px; font-family: var(--font);
 }
@@ -696,6 +700,11 @@ body { overflow: hidden; }
 .mk.store .no { top: -6px; right: -8px; }
 .mk.store.sel { border: 0; filter: drop-shadow(0 0 3px var(--bm-mint)) drop-shadow(0 0 3px var(--bm-mint)) drop-shadow(0 5px 8px rgba(0, 0, 0, 0.45)); }
 .mk.store em { top: 38%; }
+
+
+/* 현대차 블루: 큰 주문 버튼은 Hyundai Blue → 밝은 블루 그라데이션 */
+.app .mint.cart-bar:not(.short) { background: linear-gradient(100deg, var(--hy-blue), var(--bm-mint) 70%); border-color: transparent; box-shadow: 0 4px 14px rgba(0, 170, 210, 0.25); }
+.mk.dispatch .flag { background: linear-gradient(100deg, var(--hy-blue), var(--bm-mint)); }
 
 @media (max-width: 900px) {
   body { overflow: auto; }
