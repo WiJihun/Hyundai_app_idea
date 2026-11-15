@@ -65,12 +65,6 @@ DriveOn 앱은 주문·매장·전송 시각 계산을 맡는 **DriveOn 서버**
 
 현대차 앱 공모전 팀 레포지토리.
 
-## 팀원
-- @WiJihun (관리자)
-- @Onjunhwi
-- @jeonghasang
-- @qortmdcjf
-
 ## 폴더 구조
 | 폴더 | 내용 |
 |---|---|
