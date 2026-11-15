@@ -297,15 +297,37 @@ export class DriveOnApp {
     this.events.emit('changed');
   }
 
+  /**
+   * 내비 지도의 '주문 전송 지점': 매장 전송 시각에 차가 있을 경로 위치.
+   * 전송 전에는 남은 시간만큼 차를 앞으로 굴려 계산하므로, 정체가 생기면 핀이 경로를 따라 움직인다.
+   * 전송 뒤에는 실제로 전송된 순간의 위치에 고정한다.
+   */
+  private readonly sentKm = new Map<string, number>();
+  private dispatchPoint(o: { id: string; status: string; dispatchAt: number } | null | undefined, now: number) {
+    if (!o || o.status === 'CANCELLED') return null;
+    let km: number;
+    let sent = false;
+    if (o.status === 'SENT') {
+      if (!this.sentKm.has(o.id)) this.sentKm.set(o.id, this.car.progressKm);
+      km = this.sentKm.get(o.id)!;
+      sent = true;
+    } else {
+      km = this.car.kmAfter(Math.max(0, o.dispatchAt - now) / 1000);
+    }
+    return { orderId: o.id, at: o.dispatchAt, routeKm: Math.round(km * 1000) / 1000, pos: this.car.pointAtKm(km), sent };
+  }
+
   state() {
     const now = this.clock.now;
+    const session = this.dialog.view();
     return {
       now,
       display: hhmm(now),
       clock: { speed: this.clock.speed, paused: this.clock.paused },
       demo: { autoFastForward: this.autoFastForward, failNextPayment: this.payment.failNext },
       car: this.car.snapshot(now),
-      session: this.dialog.view(),
+      dispatchPoint: this.dispatchPoint(session.order, now),
+      session,
       orders: this.orders.list().map(orderView),
       vehicle: VEHICLE,
       stores: STORES.map((s) => ({ id: s.id, name: s.name, category: s.category, congestionMin: this.orders.congestionOf(s.id) })),

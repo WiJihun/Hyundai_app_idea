@@ -128,6 +128,43 @@ export class VirtualCar {
     return out;
   }
 
+  /**
+   * 지금부터 sec초 뒤 차가 있을 경로 위치(km). step()과 같은 이동 모델(정체 50%·원활 125%·경유지 체류)로 앞날을 계산한다.
+   * 정차 중이면 지금 다시 출발한다고 본다. 화면의 '주문 전송 지점' 핀에 쓴다.
+   */
+  kmAfter(sec: number): number {
+    const total = this.route.totalKm;
+    if (this.arrived) return total;
+    const v = this.baseKmh / 3600;
+    let t = Math.max(0, sec) - Math.min(Math.max(0, sec), this.dwellSec);
+    let km = this.progressKm;
+    let delay = this.delaySec;
+    let wp = this.waypoint && !this.waypointDone ? this.waypoint : null;
+    for (let i = 0; i < 1000 && t > 1e-6 && km < total; i++) {
+      const f = delay > 0.5 ? JAM_FACTOR : delay < -0.5 ? FAST_FACTOR : 1;
+      const slice = f === 1 ? t : Math.min(t, Math.abs(delay) / Math.abs(1 - f));
+      const speed = v * f;
+      if (wp && km + speed * slice >= wp.routeKm) {
+        const dt = (wp.routeKm - km) / speed;
+        km = wp.routeKm;
+        t -= dt;
+        if (f !== 1) delay -= (1 - f) * dt;
+        t -= Math.min(t, (wp.detourMin + PICKUP_DWELL_MIN) * 60);
+        wp = null;
+        continue;
+      }
+      km += speed * slice;
+      t -= slice;
+      if (f !== 1) delay -= (1 - f) * slice;
+    }
+    return Math.min(km, total);
+  }
+
+  /** 경로 위 km 지점의 좌표 */
+  pointAtKm(km: number): LatLng {
+    return pointAt(this.route, km);
+  }
+
   private baseSecFor(km: number): number {
     return (km / this.baseKmh) * 3600;
   }

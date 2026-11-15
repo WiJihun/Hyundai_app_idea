@@ -7,7 +7,10 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <!-- Asta Sans: Pleos 시스템 글꼴 / Do Hyeon·Jua: 우아한형제들 BM 도현체·주아체 (Google Fonts, OFL) / Noto Sans KR: 본문 -->
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Asta+Sans:wght@400;600;800&family=Do+Hyeon&family=Jua&family=Noto+Sans+KR:wght@400;500;700;900&display=swap" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Asta+Sans:wght@400;600;800&family=Do+Hyeon&family=Jua&family=Noto+Sans+KR:wght@400;500;700;900&family=Noto+Color+Emoji&display=swap" />
+  <!-- 내비 지도: Leaflet + 위성(Esri World Imagery)·일반(CARTO/OpenStreetMap) 타일 -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
   <link rel="stylesheet" href="/common/theme.css" />
   <link rel="stylesheet" href="car.css" />
 </head>
@@ -29,7 +32,17 @@
 
     <main class="split" id="split">
       <!-- 멀티 윈도우: 내비(왼쪽) + DriveOn(오른쪽). 주문 뒤에는 내비를 넓히고 DriveOn은 아래 미니바로 -->
-      <section class="nav" id="nav"></section>
+      <section class="nav" id="nav">
+        <div class="map" id="map"></div>
+        <div class="turn" id="turn"></div>
+        <div class="map-ctl" id="mapCtl"></div>
+        <!-- 아래 안내 바: 시스템 버튼(‹ ⌂ ≡) · 지금 달리는 길 · 도착 정보 -->
+        <div class="navbar">
+          <span class="sysnav" aria-hidden="true"><i>‹</i><i>⌂</i><i>≡</i></span>
+          <span class="road" id="road"></span>
+          <div class="eta" id="eta"></div>
+        </div>
+      </section>
       <button class="live" id="live" type="button" data-ui="expand" aria-label="주문 상태 크게 보기"></button>
       <section class="app">
         <div class="question" id="question"></div>
