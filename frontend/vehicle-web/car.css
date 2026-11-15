@@ -67,6 +67,25 @@ body { overflow: hidden; }
 .pin-label.sel { fill: var(--text); font-size: 13px; font-weight: 700; }
 .pin-wp { fill: var(--warn); stroke: #fff; stroke-width: 2; }
 .car-dot { fill: var(--text); stroke: var(--bg); stroke-width: 3; }
+/* 주문 전송 지점: 경로를 가로지르는 눈금(들르는 곳이 아니라 '지나가는 순간') */
+.send-seg { fill: none; stroke: var(--bm-mint); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; opacity: .28; }
+.send-seg.on { opacity: .55; }
+.send-gate-bg { fill: none; stroke: var(--bg); stroke-width: 11; stroke-linecap: round; }
+.send-gate { fill: none; stroke: var(--bm-mint); stroke-width: 6; stroke-linecap: round; }
+.send-tag { fill: var(--bm-mint); }
+.send-tag.small { fill: #1d2a36; stroke: var(--bm-mint); stroke-width: 1.5; }
+.send-txt { fill: #04302e; font-family: var(--font); font-weight: 800; }
+.send-txt.big { font-size: 17px; }
+.send-txt.small { font-size: 13px; font-weight: 700; fill: var(--text); }
+.send-delta { font-weight: 800; }
+.send-delta.late { fill: #8a2b00; }
+.send-delta.early { fill: #0b4d2b; }
+.send.sent .send-gate { stroke: var(--ok); }
+.send.sent .send-tag { fill: var(--ok); }
+.send.sent .send-tag.small { fill: #1d2a36; stroke: var(--ok); }
+.send.sent .send-txt.big { fill: #06281a; }
+.place-note { margin-top: 8px; font-size: 15px; color: var(--bm-sub); }
+.place-note b { color: var(--bm-ink); }
 .eta { display: flex; gap: 18px; align-items: baseline; flex-wrap: wrap; padding-top: 8px; border-top: 1px solid var(--line); }
 .eta .big { font-size: 28px; font-weight: 800; font-variant-numeric: tabular-nums; }
 .eta .lbl { color: var(--muted); font-size: 14px; margin-right: 6px; }

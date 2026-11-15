@@ -148,6 +148,30 @@ export class VirtualCar {
     return toSecond(now + sec * 1000);
   }
 
+  /**
+   * t 시각에 차가 경로 위 어디쯤(km) 있을지 예측한다. 지금부터 계속 달린다고 보고,
+   * ETA 와 같은 규칙(정체 중 감속·원활 시 가속·경유지 체류)으로 복제한 차를 미리 달려 본다.
+   * → '주문 전송 지점' 핀 위치. 같은 규칙이라 ETA·전송 시각과 어긋나지 않는다.
+   */
+  predictKmAt(now: number, t: number): number {
+    if (t <= now || this.arrived) return this.progressKm;
+    const c = new VirtualCar(this.route);
+    c.baseKmh = this.baseKmh;
+    c.progressKm = this.progressKm;
+    c.delaySec = this.delaySec;
+    c.waypoint = this.waypoint ? { ...this.waypoint } : null;
+    c.waypointDone = this.waypointDone;
+    c.dwellSec = this.dwellSec;
+    c.state = 'DRIVING';
+    let left = t - now;
+    while (left > 0 && !c.arrived) {
+      const slice = Math.min(left, 2_000);
+      c.step(slice);
+      left -= slice;
+    }
+    return c.progressKm;
+  }
+
   /** 포장 매장을 경유지로 추가 (NaviHelper 경유지 추가 역할) */
   setWaypoint(storeId: string, name: string, pos: LatLng, detourMin: number): Waypoint {
     const { km } = projectOnRoute(this.route, pos);

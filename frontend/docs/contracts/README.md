@@ -96,10 +96,23 @@ SSE `pos.order`의 `kind`는 `created` · `updated` · `sent` · `cancelled` · 
 | 메서드 | 경로 | 설명 |
 | --- | --- | --- |
 | GET | `/events` | SSE: `state`(250ms) · `gleo.say` · `pos.order` |
-| GET | `/state` | 시계 · 차량 · 대화 세션 · 주문 · 매장 혼잡 |
+| GET | `/state` | 시계 · 차량 · 대화 세션 · 주문 · 매장 혼잡 · 주문 전송 지점(`sendPoint`) |
 | POST | `/gleo/utterance` | `{ "text": "치킨 시켜줘" }` → Gleo 해석 결과 |
 | POST | `/gleo/action` | 화면 터치: `{ "type": "SELECT_STORE", "storeId": "s03" }` 등 |
 | POST | `/demo/control` | `{ "action": "jam", "value": 6 }` — `reset` `speed` `pause` `resume` `drive` `stop` `park` `jam` `fast` `clearTraffic` `failNextPayment` `autoFastForward` |
 | POST | `/pos/stores/{id}/congestion` | `{ "extraPrepMin": 5 }` 매장 혼잡 보정 |
 | POST | `/pos/orders/{id}/accept` | 매장 접수 (`NEW` → `ACCEPTED`). 전송 전이면 409 `NOT_SENT` |
 | POST | `/pos/orders/{id}/complete` | 조리 완료 (`ACCEPTED` → `DONE`). 접수 전이면 409 `NOT_ACCEPTED` |
+
+
+### 주문 전송 지점 (`GET /state` 의 `sendPoint`)
+
+진행 중 주문이 **경로 위 어디를 지날 때** 매장으로 들어가는지. 주문이 없거나 취소되면 `null`.
+
+```json
+{ "orderId": "ord-0001", "sent": false, "km": 7.09, "pos": { "lat": 37.43, "lng": 127.06 }, "at": 1794650380000, "display": "19:13" }
+```
+
+- 전송 전(`sent: false`): 전송 시각(`at`)에 차가 있을 예측 위치. 가상 차량을 ETA 와 같은 규칙(정체 감속·원활 가속·경유지 체류)으로 미리 달려 본다(`VirtualCar.predictKmAt`).
+- 전송 후(`sent: true`): 실제로 전송된 순간 차가 있던 위치.
+- `km`: 출발지부터 경로 거리. 실제 앱에서는 NaviHelper 경로 정보로 같은 값을 계산한다.

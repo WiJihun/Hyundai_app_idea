@@ -201,8 +201,50 @@ function sliceRoute(pts, fromKm, toKm) {
   return out;
 }
 
+
+// ───── 주문 전송 지점 (경로 위 눈금) ─────
+// 서버가 '전송 시각에 차가 있을 경로 위치(km)'를 준다. 운전자가 '들르는 곳'으로 오해하지 않게 핀이 아니라
+// 경로를 가로지르는 얇은 눈금으로 그리고, 시각 대신 '남은 시간'으로 말한다.
+// 평소(주행 중)엔 눈금만 조용히 두고, 결제 직후·전송 시각이 2분 이상 바뀔 때·전송될 때만 6초간 크게 알린다
+// (Gleo 음성 안내와 같은 순간 · 같은 2분 기준).
+function pointAtKm(pts, km) {
+  let acc = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    const d = distKm(a, b);
+    if (km <= acc + d && d > 0) {
+      const k = Math.max(0, (km - acc) / d);
+      return { lat: a.lat + (b.lat - a.lat) * k, lng: a.lng + (b.lng - a.lng) * k };
+    }
+    acc += d;
+  }
+  return pts[pts.length - 1];
+}
+const SEND_ANIM_MS = 1200;
+const SEND_EVENT_MS = 6000;
+const SEND_SHIFT_MIN = 2; // 서버 SHIFT_ANNOUNCE_MIN 과 같은 기준
+const sendAnim = { id: null, from: 0, to: 0, t0: 0 };
+const sendEvt = { id: null, baseAt: 0, until: 0, delta: 0, sent: false };
+function sendKmNow(t) {
+  const k = Math.min(1, (t - sendAnim.t0) / SEND_ANIM_MS);
+  return sendAnim.from + (sendAnim.to - sendAnim.from) * (1 - (1 - k) ** 3);
+}
+function trackSendPoint(sp, t) {
+  if (sendAnim.id !== sp.orderId) Object.assign(sendAnim, { id: sp.orderId, from: sp.km, to: sp.km, t0: 0 });
+  else if (Math.abs(sp.km - sendAnim.to) > 0.02) Object.assign(sendAnim, { from: sendKmNow(t), to: sp.km, t0: t });
+  // 알릴 순간: 처음 생김(결제 직후) · 전송 시각이 2분 이상 바뀜 · 전송됨
+  if (sendEvt.id !== sp.orderId) Object.assign(sendEvt, { id: sp.orderId, baseAt: sp.at, until: t + SEND_EVENT_MS, delta: 0, sent: sp.sent });
+  else if (sp.sent && !sendEvt.sent) Object.assign(sendEvt, { sent: true, until: t + SEND_EVENT_MS, delta: 0 });
+  else if (!sp.sent && Math.abs(sp.at - sendEvt.baseAt) >= SEND_SHIFT_MIN * 60_000) {
+    Object.assign(sendEvt, { delta: Math.round((sp.at - sendEvt.baseAt) / 60_000), baseAt: sp.at, until: t + SEND_EVENT_MS });
+  }
+  return { km: sendKmNow(t), moving: t - sendAnim.t0 < SEND_ANIM_MS, event: t < sendEvt.until, delta: t < sendEvt.until ? sendEvt.delta : 0 };
+}
+let sendRaf = 0;
+
 function renderNav(st) {
   const c = st.car;
+  const restrictedNav = c.uxRestricted;
   const pts = c.routePoints;
   const h = st.session.home;
   const stores = [...h.nearHome, ...h.onTheWay];
@@ -235,6 +277,42 @@ function renderNav(st) {
       ${sel ? `<text class="pin-label sel" x="${+x + 15}" y="${+y + 4}">${esc(s.name)}</text>` : ''}`;
   }).join('');
   const wp = c.waypoint && !c.waypoint.done ? (() => { const [x, y] = P(c.waypoint.pos).split(','); return `<rect class="pin-wp" x="${x - 7}" y="${y - 7}" width="14" height="14" rx="3"/>`; })() : '';
+  // 주문 전송 지점: 경로를 가로지르는 눈금 + (알릴 때만) 남은 시간 라벨
+  const sp = st.sendPoint;
+  let sendSeg = '', sendPin = '', sendEta = '';
+  if (sp) {
+    const t = performance.now();
+    const { km, moving, event, delta } = trackSendPoint(sp, t);
+    if (moving && !sendRaf) sendRaf = requestAnimationFrame(() => { sendRaf = 0; if (lastState) renderNav(lastState); });
+    const xy = (k) => P(pointAtKm(pts, k)).split(',').map(Number);
+    const [px, py] = xy(km);
+    // 눈금 방향: 경로 진행 방향에 수직
+    const [ax, ay] = xy(Math.max(0, km - 0.08)), [bx, by] = xy(km + 0.08);
+    const len = Math.hypot(bx - ax, by - ay) || 1;
+    const nx = -(by - ay) / len, ny = (bx - ax) / len, G = 14;
+    const gate = `${(px - nx * G).toFixed(1)},${(py - ny * G).toFixed(1)} ${(px + nx * G).toFixed(1)},${(py + ny * G).toFixed(1)}`;
+    const seg = !sp.sent && km > c.progressKm ? sliceRoute(pts, c.progressKm, km) : [];
+    if (seg.length > 1) sendSeg = `<polyline class="send-seg ${event ? 'on' : ''}" points="${line(seg)}"/>`;
+
+    const mins = Math.ceil((sp.at - st.now) / 60_000);
+    const text = sp.sent ? '주문 보냄' : mins <= 1 ? '곧 주문' : `${mins}분 뒤 주문`;
+    // 라벨: 알릴 때는 크게, 정차·주차 중엔 작게, 주행 중 평소엔 숨김(눈금만)
+    const size = event ? 'big' : !restrictedNav ? 'small' : null;
+    let tag = '';
+    if (size) {
+      const fs = size === 'big' ? 17 : 13, h = size === 'big' ? 34 : 24;
+      const badge = event && delta ? `${delta > 0 ? '+' : '−'}${Math.abs(delta)}분` : '';
+      const w = text.length * fs * 0.92 + (badge ? badge.length * fs * 0.62 + 18 : 0) + 28;
+      const up = py > h + 30;
+      const ty = up ? py - G - h - 8 : py + G + 8;
+      const tx = Math.max(4, Math.min(W - w - 4, px - w / 2));
+      tag = `<rect class="send-tag ${size}" x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" width="${w.toFixed(1)}" height="${h}" rx="${h / 2}"/>
+        <text class="send-txt ${size}" x="${(tx + 14).toFixed(1)}" y="${(ty + h / 2 + fs * 0.36).toFixed(1)}">${esc(text)}${badge ? `<tspan class="send-delta ${delta > 0 ? 'late' : 'early'}" dx="10">${badge}</tspan>` : ''}</text>`;
+    }
+    sendPin = `<g class="send ${sp.sent ? 'sent' : ''}">
+      <polyline class="send-gate-bg" points="${gate}"/><polyline class="send-gate" points="${gate}"/>${tag}</g>`;
+    if (!sp.sent) sendEta = `<div><span class="lbl">주문 전송</span><b>${esc(text.replace(' 주문', ''))}</b></div>`;
+  }
   const [hx, hy] = P(pts[pts.length - 1]).split(',');
   const [sx, sy] = P(pts[0]).split(',');
   const [cx, cy] = P(c.position).split(',');
@@ -242,6 +320,7 @@ function renderNav(st) {
   const svg = `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="내비 경로">
     <rect class="map-bg" width="${W}" height="${H}" rx="10"/>
     <polyline class="route-all" points="${line(pts)}"/>
+    ${sendSeg}
     ${done.length > 1 ? `<polyline class="route-done" points="${line(done)}"/>` : ''}
     ${jam.length > 1 ? `<polyline class="route-all route-jam" points="${line(jam)}"/>` : ''}
     ${storePins}
@@ -249,12 +328,14 @@ function renderNav(st) {
     <circle class="pin-home" cx="${hx}" cy="${hy}" r="8"/><text class="pin-label" x="${+hx + 11}" y="${+hy + 4}" style="fill:var(--ok)">집</text>
     ${wp}
     <circle class="car-dot" cx="${cx}" cy="${cy}" r="9"/>
+    ${sendPin}
   </svg>`;
 
   const eta = `<div class="eta">
       <div><span class="lbl">집 도착</span><span class="big">${hhmm(c.etaDestination)}</span></div>
       <div><span class="lbl">남은 거리</span><b>${c.remainingKm} km</b></div>
       ${c.waypoint && !c.waypoint.done ? `<div><span class="lbl">경유 ${esc(c.waypoint.name)}</span><b>${hhmm(c.etaWaypoint)}</b></div>` : ''}
+      ${sendEta}
     </div>`;
   patch($('nav'), svg + eta);
 }
@@ -481,6 +562,7 @@ function orderView(st, o, notice) {
     return `<div class="status-head">
         <div class="t1">주문이 예약됐어요</div>
         <div class="p0"><span class="big">${hhmm(o.dispatchAt)}</span>매장 전송 예정 · ${minutesLeft(o.dispatchAt - st.now)}</div>
+        <div class="place-note">지도 위 눈금은 <b>${place}까지 ${Math.round((o.pickupEta - o.dispatchAt) / 60_000)}분 남은 지점</b>이에요. 그곳을 지날 때 매장으로 보내요.</div>
         ${notice ? `<div class="why">${esc(notice.text)}</div>` : ''}
         ${steps(1, 25 + 25 * progress(o, st.now))}
         <div class="formula">${place} 도착 ${hhmm(o.pickupEta)} ${sign} 여유 ${Math.abs(o.marginMin)}분 − 조리 ${o.prepMin}분${o.mode === 'DELIVERY' ? ` − 배달 ${o.deliveryMin}분` : ''} = <b class="time">${hhmm(o.dispatchAt)}</b> · 내비 시간으로 30초마다 다시 계산</div>
